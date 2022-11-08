@@ -202,6 +202,7 @@ func TestE2ECompile(t *testing.T) {
 func TestE2ESetup(t *testing.T) {
 	mainStart := time.Now()
 	assert := test.NewAssert(t)
+	session := "session1"
 
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Setup and dump pk, vk
@@ -220,7 +221,7 @@ func TestE2ESetup(t *testing.T) {
 	}
 	{
 		fmt.Printf("NbCons: %d, NbLazyCons: %d\n", cccs.GetNbConstraints(), len(cccs.LazyCons))
-		err := groth16_bn254.SetupLazyWithDump(cccs)
+		err := groth16_bn254.SetupLazyWithDump(cccs, session)
 		assert.NoError(err, "setup")
 		fmt.Println("Finished setup", time.Since(mainStart))
 	}
@@ -229,6 +230,7 @@ func TestE2ESetup(t *testing.T) {
 func TestE2EProve(t *testing.T) {
 	mainStart := time.Now()
 	assert := test.NewAssert(t)
+	session := "session1"
 
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Read Lazy circuit and load pk
@@ -252,7 +254,8 @@ func TestE2EProve(t *testing.T) {
 	}
 	runtime.GC()
 	{
-		pkFile, err := os.Open("pk.E.save")
+		name := fmt.Sprintf("pk.E.%s.save", session)
+		pkFile, err := os.Open(name)
 		assert.NoError(err, "open pkFile")
 		fmt.Println("size of pkE before read:", size.Of(pkE))
 		cnt, err := pkE.UnsafeReadEFrom(pkFile)
@@ -262,14 +265,16 @@ func TestE2EProve(t *testing.T) {
 		fmt.Printf("Read %d bytes from pk.E.save %v\n", cnt, time.Since(mainStart))
 		pkFile.Close()
 
-		pkFile, err = os.Open("pk.B2.save")
+		name = fmt.Sprintf("pk.B2.%s.save", session)
+		pkFile, err = os.Open(name)
 		assert.NoError(err, "open pkFile")
 		cnt, err = pkB2.UnsafeReadB2From(pkFile)
 		assert.NoError(err, "read pk.B2")
 		fmt.Printf("Read %d bytes from pk.B2.save %v\n", cnt, time.Since(mainStart))
 		pkFile.Close()
 
-		vkFile, err := os.Open("vk.save")
+		name = fmt.Sprintf("vk.%s.save", session)
+		vkFile, err := os.Open(name)
 		assert.NoError(err, "open vkFile")
 		cnt, err = vk.UnsafeReadFrom(vkFile)
 		assert.NoError(err, "read vk")
@@ -291,7 +296,7 @@ func TestE2EProve(t *testing.T) {
 		json.Unmarshal(wBytes, &witnessFull)
 	}
 	opt, _ := backend.NewProverConfig()
-	proof, err := groth16_bn254.ProveRoll(cccs, &pkE, &pkB2, *witnessFull.Vector.(*witness_bn254.Witness), opt)
+	proof, err := groth16_bn254.ProveRoll(cccs, &pkE, &pkB2, *witnessFull.Vector.(*witness_bn254.Witness), opt, session)
 	assert.NoError(err, "prove")
 	fmt.Println("Finished proving", time.Since(mainStart))
 
@@ -311,6 +316,7 @@ func TestE2EProve(t *testing.T) {
 func TestE2EWhole(t *testing.T) {
 	mainStart := time.Now()
 	assert := test.NewAssert(t)
+	session := "session1"
 
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Init operator and create witness
@@ -368,7 +374,7 @@ func TestE2EWhole(t *testing.T) {
 
 	{
 		fmt.Printf("Lazy cs, NbCons: %d, NbLazyCons: %d\n", cccs.GetNbConstraints(), len(cccs.LazyCons))
-		err := groth16_bn254.SetupLazyWithDump(cccs)
+		err := groth16_bn254.SetupLazyWithDump(cccs, session)
 		assert.NoError(err, "setup")
 		fmt.Println("Finished setup", time.Since(mainStart))
 	}
@@ -378,7 +384,8 @@ func TestE2EWhole(t *testing.T) {
 	var pkE, pkB2 groth16_bn254.ProvingKey
 	var vk groth16_bn254.VerifyingKey
 	{
-		pkFile, err := os.Open("pk.E.save")
+		name := fmt.Sprintf("pk.E.%s.save", session)
+		pkFile, err := os.Open(name)
 		assert.NoError(err, "open pkFile")
 		fmt.Println("size of pkE before read:", size.Of(pkE))
 		cnt, err := pkE.UnsafeReadEFrom(pkFile)
@@ -388,14 +395,16 @@ func TestE2EWhole(t *testing.T) {
 		fmt.Printf("Read %d bytes from pk.E.save %v\n", cnt, time.Since(mainStart))
 		pkFile.Close()
 
-		pkFile, err = os.Open("pk.B2.save")
+		name = fmt.Sprintf("pk.B2.%s.save", session)
+		pkFile, err = os.Open(name)
 		assert.NoError(err, "open pkFile")
 		cnt, err = pkB2.UnsafeReadB2From(pkFile)
 		assert.NoError(err, "read pk.B2")
 		fmt.Printf("Read %d bytes from pk.B2.save %v\n", cnt, time.Since(mainStart))
 		pkFile.Close()
 
-		vkFile, err := os.Open("vk.save")
+		name = fmt.Sprintf("vk.%s.save", session)
+		vkFile, err := os.Open(name)
 		assert.NoError(err, "open vkFile")
 		cnt, err = vk.UnsafeReadFrom(vkFile)
 		assert.NoError(err, "read vk")
@@ -411,7 +420,7 @@ func TestE2EWhole(t *testing.T) {
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Prove part by part
 	opt, _ := backend.NewProverConfig()
-	proof, err := groth16_bn254.ProveRoll(cccs, &pkE, &pkB2, *witnessFull.Vector.(*witness_bn254.Witness), opt)
+	proof, err := groth16_bn254.ProveRoll(cccs, &pkE, &pkB2, *witnessFull.Vector.(*witness_bn254.Witness), opt, session)
 	assert.NoError(err, "prove")
 	fmt.Println("Finished proving", time.Since(mainStart))
 

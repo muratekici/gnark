@@ -79,7 +79,7 @@ type VerifyingKey struct {
 	e curve.GT // not serialized
 }
 
-func SetupWithDump(r1cs *cs.R1CS) error { //, pk *ProvingKey, vk *VerifyingKey) error {
+func SetupWithDump(r1cs *cs.R1CS, session string) error { //, pk *ProvingKey, vk *VerifyingKey) error {
 	var pk ProvingKey
 	var vk VerifyingKey
 
@@ -209,7 +209,8 @@ func SetupWithDump(r1cs *cs.R1CS) error { //, pk *ProvingKey, vk *VerifyingKey) 
 		pk.G2.Beta = g2PointsAff[0]
 		pk.G2.Delta = g2PointsAff[1]
 
-		pkFile, err := os.Create("pk.E.save")
+		name := fmt.Sprintf("pk.E.%s.save", session)
+		pkFile, err := os.Create(name)
 		if err != nil {
 			return err
 		}
@@ -250,7 +251,8 @@ func SetupWithDump(r1cs *cs.R1CS) error { //, pk *ProvingKey, vk *VerifyingKey) 
 			return err
 		}
 
-		vkFile, err := os.Create("vk.save")
+		name = fmt.Sprintf("vk.%s.save", session)
+		vkFile, err := os.Create(name)
 		if err != nil {
 			return err
 		}
@@ -269,7 +271,8 @@ func SetupWithDump(r1cs *cs.R1CS) error { //, pk *ProvingKey, vk *VerifyingKey) 
 		g1PointsAff := curve.BatchScalarMultiplicationG1(&g1, g1Scalars)
 		pk.G1.A = g1PointsAff
 
-		pkFile, err := os.Create("pk.A.save")
+		name := fmt.Sprintf("pk.A.%s.save", session)
+		pkFile, err := os.Create(name)
 		if err != nil {
 			return err
 		}
@@ -288,7 +291,8 @@ func SetupWithDump(r1cs *cs.R1CS) error { //, pk *ProvingKey, vk *VerifyingKey) 
 		g1PointsAff := curve.BatchScalarMultiplicationG1(&g1, g1Scalars)
 		pk.G1.B = g1PointsAff
 
-		pkFile, err := os.Create("pk.B1.save")
+		name := fmt.Sprintf("pk.B1.%s.save", session)
+		pkFile, err := os.Create(name)
 		if err != nil {
 			return err
 		}
@@ -307,7 +311,8 @@ func SetupWithDump(r1cs *cs.R1CS) error { //, pk *ProvingKey, vk *VerifyingKey) 
 		g1PointsAff := curve.BatchScalarMultiplicationG1(&g1, g1Scalars)
 		pk.G1.K = g1PointsAff
 
-		pkFile, err := os.Create("pk.K.save")
+		name := fmt.Sprintf("pk.K.%s.save", session)
+		pkFile, err := os.Create(name)
 		if err != nil {
 			return err
 		}
@@ -327,7 +332,8 @@ func SetupWithDump(r1cs *cs.R1CS) error { //, pk *ProvingKey, vk *VerifyingKey) 
 		pk.G1.Z = g1PointsAff
 		bitReverse(pk.G1.Z)
 
-		pkFile, err := os.Create("pk.Z.save")
+		name := fmt.Sprintf("pk.Z.%s.save", session)
+		pkFile, err := os.Create(name)
 		if err != nil {
 			return err
 		}
@@ -346,7 +352,8 @@ func SetupWithDump(r1cs *cs.R1CS) error { //, pk *ProvingKey, vk *VerifyingKey) 
 		g2PointsAff := curve.BatchScalarMultiplicationG2(&g2, g2Scalars)
 		pk.G2.B = g2PointsAff
 
-		pkFile, err := os.Create("pk.B2.save")
+		name := fmt.Sprintf("pk.B2.%s.save", session)
+		pkFile, err := os.Create(name)
 		if err != nil {
 			return err
 		}
@@ -360,7 +367,7 @@ func SetupWithDump(r1cs *cs.R1CS) error { //, pk *ProvingKey, vk *VerifyingKey) 
 	return nil
 }
 
-func SetupLazyWithDump(r1cs *cs.R1CS) error { //, pk *ProvingKey, vk *VerifyingKey) error {
+func SetupLazyWithDump(r1cs *cs.R1CS, session string) error { //, pk *ProvingKey, vk *VerifyingKey) error {
 	var pk ProvingKey
 	var vk VerifyingKey
 
@@ -493,7 +500,8 @@ func SetupLazyWithDump(r1cs *cs.R1CS) error { //, pk *ProvingKey, vk *VerifyingK
 		pk.G2.Beta = g2PointsAff[0]
 		pk.G2.Delta = g2PointsAff[1]
 
-		pkFile, err := os.Create("pk.E.save")
+		name := fmt.Sprintf("pk.E.%s.save", session)
+		pkFile, err := os.Create(name)
 		if err != nil {
 			return err
 		}
@@ -532,7 +540,8 @@ func SetupLazyWithDump(r1cs *cs.R1CS) error { //, pk *ProvingKey, vk *VerifyingK
 			return err
 		}
 
-		vkFile, err := os.Create("vk.save")
+		name = fmt.Sprintf("vk.%s.save", session)
+		vkFile, err := os.Create(name)
 		if err != nil {
 			return err
 		}
@@ -551,7 +560,8 @@ func SetupLazyWithDump(r1cs *cs.R1CS) error { //, pk *ProvingKey, vk *VerifyingK
 		g1PointsAff := curve.BatchScalarMultiplicationG1(&g1, g1Scalars)
 		pk.G1.A = g1PointsAff
 
-		pkFile, err := os.Create("pk.A.save")
+		name := fmt.Sprintf("pk.A.%s.save", session)
+		pkFile, err := os.Create(name)
 		if err != nil {
 			return err
 		}
@@ -570,7 +580,8 @@ func SetupLazyWithDump(r1cs *cs.R1CS) error { //, pk *ProvingKey, vk *VerifyingK
 		g1PointsAff := curve.BatchScalarMultiplicationG1(&g1, g1Scalars)
 		pk.G1.B = g1PointsAff
 
-		pkFile, err := os.Create("pk.B1.save")
+		name := fmt.Sprintf("pk.B1.%s.save", session)
+		pkFile, err := os.Create(name)
 		if err != nil {
 			return err
 		}
@@ -589,7 +600,8 @@ func SetupLazyWithDump(r1cs *cs.R1CS) error { //, pk *ProvingKey, vk *VerifyingK
 		g1PointsAff := curve.BatchScalarMultiplicationG1(&g1, g1Scalars)
 		pk.G1.K = g1PointsAff
 
-		pkFile, err := os.Create("pk.K.save")
+		name := fmt.Sprintf("pk.K.%s.save", session)
+		pkFile, err := os.Create(name)
 		if err != nil {
 			return err
 		}
@@ -609,7 +621,8 @@ func SetupLazyWithDump(r1cs *cs.R1CS) error { //, pk *ProvingKey, vk *VerifyingK
 		pk.G1.Z = g1PointsAff
 		bitReverse(pk.G1.Z)
 
-		pkFile, err := os.Create("pk.Z.save")
+		name := fmt.Sprintf("pk.Z.%s.save", session)
+		pkFile, err := os.Create(name)
 		if err != nil {
 			return err
 		}
@@ -628,7 +641,8 @@ func SetupLazyWithDump(r1cs *cs.R1CS) error { //, pk *ProvingKey, vk *VerifyingK
 		g2PointsAff := curve.BatchScalarMultiplicationG2(&g2, g2Scalars)
 		pk.G2.B = g2PointsAff
 
-		pkFile, err := os.Create("pk.B2.save")
+		name := fmt.Sprintf("pk.B2.%s.save", session)
+		pkFile, err := os.Create(name)
 		if err != nil {
 			return err
 		}

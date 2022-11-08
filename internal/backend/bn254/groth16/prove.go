@@ -326,7 +326,8 @@ func computeH(a, b, c []fr.Element, domain *fft.Domain) []fr.Element {
 	return a
 }
 
-func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witness, opt backend.ProverConfig) (*Proof, error) {
+func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witness, opt backend.ProverConfig,
+	session string) (*Proof, error) {
 	timeS := time.Now()
 	time0 := time.Now()
 	log := logger.Logger().With().Str("curve", r1cs.CurveID().String()).Int("nbConstraints", len(r1cs.Constraints)).Str("backend", "groth16").Logger()
@@ -455,7 +456,8 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 		}()
 
 		go func() {
-			pkFile, err := os.Open("pk.A.save")
+			name := fmt.Sprintf("pk.A.%s.save", session)
+			pkFile, err := os.Open(name)
 			if err != nil {
 				return
 			}
@@ -515,7 +517,8 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 		go computeAR1()
 
 		go func() {
-			pkFile, err := os.Open("pk.B1.save")
+			name := fmt.Sprintf("pk.B1.%s.save", session)
+			pkFile, err := os.Open(name)
 			if err != nil {
 				return
 			}
@@ -557,7 +560,8 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 		}
 		go computeBS1()
 		go func() {
-			pkFile, err := os.Open("pk.Z.save")
+			name := fmt.Sprintf("pk.Z.%s.save", session)
+			pkFile, err := os.Open(name)
 			if err != nil {
 				return
 			}
@@ -592,7 +596,8 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 			chKrs2Done <- err
 		}()
 		go func() {
-			pkFile, err := os.Open("pk.K.save")
+			name := fmt.Sprintf("pk.K.%s.save", session)
+			pkFile, err := os.Open(name)
 			if err != nil {
 				return
 			}
@@ -642,7 +647,8 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 
 		chPkB2 := make(chan struct{}, 1)
 		go func() {
-			pkFile, err := os.Open("pk.B2.save")
+			name := fmt.Sprintf("pk.B2.%s.save", session)
+			pkFile, err := os.Open(name)
 			if err != nil {
 				return
 			}
