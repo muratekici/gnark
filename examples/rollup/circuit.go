@@ -22,13 +22,14 @@ import (
 	"github.com/consensys/gnark/std/accumulator/merkle"
 	"github.com/consensys/gnark/std/algebra/twistededwards"
 	"github.com/consensys/gnark/std/hash/mimc"
+	"github.com/consensys/gnark/std/hash/poseidon"
 	"github.com/consensys/gnark/std/signature/eddsa"
 )
 
 const (
-	nbAccounts = 16 // 16 accounts so we know that the proof length is 5
-	depth      = 5  // size fo the inclusion proofs
-	batchSize  = 1  // nbTranfers to batch in a proof
+	nbAccounts = 16  // 16 accounts so we know that the proof length is 5
+	depth      = 5   // size fo the inclusion proofs
+	batchSize  = 500 // nbTranfers to batch in a proof
 )
 
 // Circuit "toy" rollup circuit where an operator can generate a proof that he processed
@@ -139,6 +140,9 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		if err != nil {
 			return err
 		}
+
+		p := poseidon.Poseidon(api, circuit.Transfers[i].Nonce, circuit.Transfers[i].Amount)
+		poseidon.Poseidon(api, p, circuit.Transfers[i].Amount)
 
 		// update the accounts
 		verifyAccountUpdated(api, circuit.SenderAccountsBefore[i], circuit.ReceiverAccountsBefore[i], circuit.SenderAccountsAfter[i], circuit.ReceiverAccountsAfter[i], circuit.Transfers[i].Amount)

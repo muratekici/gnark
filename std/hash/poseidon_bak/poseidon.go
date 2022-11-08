@@ -1,9 +1,9 @@
-package poseidon
+package poseidon_bak
 
 import (
+	"github.com/consensys/gnark/std/hash/poseidon_bak/constants"
+
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/frontend/compiled"
-	"github.com/consensys/gnark/std/hash/poseidon/constants"
 )
 
 // power 5 as s-box
@@ -73,17 +73,36 @@ func permutation(api frontend.API, state []frontend.Variable) []frontend.Variabl
 	return state
 }
 
-func Poseidon(api frontend.API, data ...frontend.Variable) frontend.Variable {
-	// we record 2 params first, then lets see if we can record multi params and solve
-	t := len(data) + 1
-	if t < 3 || t > 13 {
+func Poseidon(api frontend.API, input ...frontend.Variable) frontend.Variable {
+	inputLength := len(input)
+	// No support for hashing inputs of length less than 2
+	if inputLength < 2 {
 		panic("Not supported input size")
 	}
-	vInternal := api.AddInternalVariableWithLazy(compiled.ConstraintsMap[len(data)-2])
-	api.AddLazyPoseidon(vInternal, data...)
-	state := make([]frontend.Variable, t)
+
+	const maxLength = 12
+	state := make([]frontend.Variable, maxLength+1)
 	state[0] = frontend.Variable(0)
-	copy(state[1:], data)
-	state = permutation(api, state)
+	startIndex := 0
+	lastIndex := 0
+
+	// Make a hash chain of the input if its length > maxLength
+	if inputLength > maxLength {
+		count := inputLength / maxLength
+		for i := 0; i < count; i++ {
+			lastIndex = (i + 1) * maxLength
+			copy(state[1:], input[startIndex:lastIndex])
+			state = permutation(api, state)
+			startIndex = lastIndex
+		}
+	}
+
+	// For the remaining part of the input OR if 2 <= inputLength <= 12
+	if lastIndex < inputLength {
+		lastIndex = inputLength
+		remainigLength := lastIndex - startIndex
+		copy(state[1:], input[startIndex:lastIndex])
+		state = permutation(api, state[:remainigLength+1])
+	}
 	return state[0]
 }

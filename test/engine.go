@@ -18,6 +18,7 @@ package test
 
 import (
 	"fmt"
+	"github.com/consensys/gnark/frontend/compiled"
 	"math/big"
 	"path/filepath"
 	"reflect"
@@ -477,4 +478,20 @@ func copyWitness(to, from frontend.Circuit) {
 
 func (e *engine) Compiler() frontend.Compiler {
 	return e
+}
+
+func (e *engine) AddLazyMimcEnc(s, h, v frontend.Variable) {
+	// Not implemented
+}
+
+// AddLazyPoseidon for Dynamic expanding of mimc enc
+func (e *engine) AddLazyPoseidon(v frontend.Variable, s ...frontend.Variable) {
+	// Not implemented
+}
+
+func (e *engine) AddInternalVariableWithLazy(lazyCnt int) frontend.Variable {
+	// Not implemented
+	return compiled.LinearExpression{
+		compiled.Pack(0, compiled.CoeffIdOne, schema.Internal),
+	}
 }

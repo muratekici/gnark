@@ -55,9 +55,6 @@ func (cs *ConstraintSystem) GetNbVariables() (internal, secret, public int) {
 	return cs.NbInternalVariables, cs.NbSecretVariables, cs.NbPublicVariables
 }
 
-// GetCounters return the collected constraint counters, if any
-func (cs *ConstraintSystem) GetCounters() []Counter { return cs.Counters }
-
 func (cs *ConstraintSystem) GetSchema() *schema.Schema { return cs.Schema }
 
 // Counter contains measurements of useful statistics between two Tag

@@ -140,4 +140,12 @@ type API interface {
 	// Backend is a shorcut to api.Compiler().Backend()
 	// Deprecated: use api.Compiler().Backend() instead
 	Backend() backend.ID
+
+	// AddInternalVariableWithLazy For Dynamic expanding
+	AddInternalVariableWithLazy(lazyCnt int) Variable
+
+	// AddLazyMimcEnc for Dynamic expanding of mimc enc
+	AddLazyMimcEnc(s, h, v Variable)
+
+	AddLazyPoseidon(v Variable, s ...Variable)
 }

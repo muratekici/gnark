@@ -164,9 +164,8 @@ func (system *r1cs) DivUnchecked(i1, i2 frontend.Variable) frontend.Variable {
 
 	if !v2Constant {
 		res := system.newInternalVariable()
-		debug := system.AddDebugInfo("div", v1, "/", v2, " == ", res)
 		// note that here we don't ensure that divisor is != 0
-		system.addConstraint(newR1C(v2, res, v1), debug)
+		system.addConstraint(newR1C(v2, res, v1))
 		return res
 	}
 
@@ -198,11 +197,10 @@ func (system *r1cs) Div(i1, i2 frontend.Variable) frontend.Variable {
 
 	if !v2Constant {
 		res := system.newInternalVariable()
-		debug := system.AddDebugInfo("div", v1, "/", v2, " == ", res)
 		v2Inv := system.newInternalVariable()
 		// note that here we ensure that v2 can't be 0, but it costs us one extra constraint
-		system.addConstraint(newR1C(v2, v2Inv, system.one()), debug)
-		system.addConstraint(newR1C(v1, v2Inv, res), debug)
+		system.addConstraint(newR1C(v2, v2Inv, system.one()))
+		system.addConstraint(newR1C(v1, v2Inv, res))
 		return res
 	}
 
@@ -238,8 +236,7 @@ func (system *r1cs) Inverse(i1 frontend.Variable) frontend.Variable {
 	// allocate resulting frontend.Variable
 	res := system.newInternalVariable()
 
-	debug := system.AddDebugInfo("inverse", vars[0], "*", res, " == 1")
-	system.addConstraint(newR1C(res, vars[0], system.one()), debug)
+	system.addConstraint(newR1C(res, vars[0], system.one()))
 
 	return res
 }
@@ -434,8 +431,6 @@ func (system *r1cs) IsZero(i1 frontend.Variable) frontend.Variable {
 		return system.toVariable(0)
 	}
 
-	debug := system.AddDebugInfo("isZero", a)
-
 	//m * (1 - m) = 0       // constrain m to be 0 or 1
 	// a * m = 0            // constrain m to be 0 if a != 0
 	// _ = inverse(m + a) 	// constrain m to be 1 if a == 0
@@ -447,7 +442,7 @@ func (system *r1cs) IsZero(i1 frontend.Variable) frontend.Variable {
 		panic(err)
 	}
 	m := res[0]
-	system.addConstraint(newR1C(a, m, system.toVariable(0)), debug)
+	system.addConstraint(newR1C(a, m, system.toVariable(0)))
 
 	system.AssertIsBoolean(m)
 	ma := system.Add(m, a)

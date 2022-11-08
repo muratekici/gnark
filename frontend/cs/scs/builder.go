@@ -82,8 +82,23 @@ func newBuilder(curveID ecc.ID, config frontend.CompileConfig) *scs {
 	return &system
 }
 
+func (system *scs) AddLazyMimcEnc(s, h, v frontend.Variable) {
+	// not implemented
+}
+
+func (system *scs) AddLazyPoseidon(v frontend.Variable, s ...frontend.Variable) {
+	// not implemented
+}
+
+func (system *scs) AddInternalVariableWithLazy(lazyCnt int) frontend.Variable {
+	idx := system.NbInternalVariables + system.NbPublicVariables + system.NbSecretVariables
+	return compiled.LinearExpression{
+		compiled.Pack(idx, compiled.CoeffIdOne, schema.Internal),
+	}
+}
+
 // addPlonkConstraint creates a constraint of the for al+br+clr+k=0
-//func (system *SparseR1CS) addPlonkConstraint(l, r, o frontend.Variable, cidl, cidr, cidm1, cidm2, cido, k int, debugID ...int) {
+// func (system *SparseR1CS) addPlonkConstraint(l, r, o frontend.Variable, cidl, cidr, cidm1, cidm2, cido, k int, debugID ...int) {
 func (system *scs) addPlonkConstraint(l, r, o compiled.Term, cidl, cidr, cidm1, cidm2, cido, k int, debugID ...int) {
 
 	if len(debugID) > 0 {
