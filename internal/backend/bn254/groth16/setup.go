@@ -377,7 +377,7 @@ func SetupLazyWithDump(r1cs *cs.R1CS, session string) error { //, pk *ProvingKey
 	nbPrivateWires := r1cs.NbSecretVariables + r1cs.NbInternalVariables
 
 	// Setting group for fft
-	domain := fft.NewDomain(uint64(len(r1cs.Constraints) + 273*len(r1cs.LazyCons)))
+	domain := fft.NewDomain(uint64(len(r1cs.Constraints) + r1cs.LazyCons.GetConstraintsAll()))
 
 	// samples toxic waste
 	toxicWaste, err := sampleToxicWaste()
