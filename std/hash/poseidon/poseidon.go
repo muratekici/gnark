@@ -79,7 +79,7 @@ func Poseidon(api frontend.API, data ...frontend.Variable) frontend.Variable {
 	if t < 3 || t > 13 {
 		panic("Not supported input size")
 	}
-	vInternal := api.AddInternalVariableWithLazy(compiled.ConstraintsMap[len(data)-2])
+	vInternal := api.AddInternalVariableWithLazy(compiled.GetConstraintsNum(data, api))
 	api.AddLazyPoseidon(vInternal, data...)
 	state := make([]frontend.Variable, t)
 	state[0] = frontend.Variable(0)

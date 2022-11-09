@@ -23,6 +23,10 @@ func FetchLazyConstraint(S []LinearExpression, staticR1c []R1C, j int, Coefs Coe
 	// s0 + v, s2, s3 2
 
 	for i := range S {
+		// if it is constant, we just skipped the r1c, because constant will not generate first 3 r1c
+		if _, isConstant := ConstantValue(S[i], Coefs); isConstant {
+			continue
+		}
 		if j == i*3 {
 			zero := LinearExpression{Pack(0, CoeffIdZero, schema.Public)}
 			addRes := S[i]
@@ -102,6 +106,25 @@ func init() {
 	ConstraintsMap = []int{240, 261, 297, 321, 354, 381, 402, 417, 459, 465, 504}
 }
 
+func GetConstraintsNum(variables []frontend.Variable, api frontend.API) int {
+	constantNum := 0
+	for _, s := range variables {
+		if _, t := api.Compiler().ConstantValue(s); t {
+			constantNum++
+		}
+	}
+	return ConstraintsMap[len(variables)-2] - constantNum*3
+}
+func GetConstraintsNumLinear(variables []LinearExpression) int {
+	constantNum := 0
+	for _, s := range variables {
+		if t := IsConstant(s); t {
+			constantNum++
+		}
+	}
+	return ConstraintsMap[len(variables)-2] - constantNum*3
+}
+
 func StaticPoseidonR1CS(v frontend.Variable, Coefs CoeffTable, data ...LinearExpression) []R1C {
 	t := len(data) + 1
 	if t < 3 || t > 13 {
@@ -120,7 +143,7 @@ func StaticPermutation(V frontend.Variable, state []LinearExpression, Coefs Coef
 	for i := 0; i < len(stateCopy); i++ {
 		stateCopy[i] = state[i].Clone()
 	}
-	stateCopy, r1csFullRound1, wid := StaticFullRound(stateCopy, V, Coefs, &roundCounter, V.(LinearExpression)[0].WireID()-ConstraintsMap[len(state)-3])
+	stateCopy, r1csFullRound1, wid := StaticFullRound(stateCopy, V, Coefs, &roundCounter, V.(LinearExpression)[0].WireID()-GetConstraintsNumLinear(state[1:]))
 	stateCopy, r1csPartial1, wid := StaticPartial(stateCopy, V, Coefs, &roundCounter, wid)
 	stateCopy, r1csFullRound2, wid := StaticFullRound(stateCopy, V, Coefs, &roundCounter, wid)
 
@@ -174,7 +197,7 @@ func StaticFullRound(state []LinearExpression, V frontend.Variable, Coefs CoeffT
 				r05 := new(big.Int).Mul(r04, r0)
 				r05 = new(big.Int).Mod(r05, mod)
 				ccId := Coefs.GetCoeffID(r05)
-				state[0][0].SetCoeffID(ccId)
+				state[j][0].SetCoeffID(ccId)
 			} else {
 				r := V.(LinearExpression).Clone()
 				r[0].SetWireID(wid)
@@ -391,8 +414,25 @@ func ConstantValue(v LinearExpression, Coefs CoeffTable) (*big.Int, bool) {
 	return new(big.Int).Set(Coefs.GetCoeffsById(cID)), true
 }
 
+func IsConstant(v LinearExpression) bool {
+	if len(v) != 1 {
+		return false
+	}
+	_, vID, visibility := v[0].Unpack()
+	if !(vID == 0 && visibility == schema.Public) {
+		return false
+	}
+	return true
+}
+
 func (le *LazyPoseidonInputs) GetConstraintsNum() int {
-	return ConstraintsMap[len(le.S)-2]
+	constantNum := 0
+	for _, s := range le.S {
+		if IsConstant(s) {
+			constantNum++
+		}
+	}
+	return ConstraintsMap[len(le.S)-2] - constantNum*3
 }
 
 func (le *LazyPoseidonInputs) FetchLazy(j int, r1cs *R1CS, coefs CoeffTable) R1C {
@@ -404,7 +444,13 @@ func (le *LazyPoseidonInputs) GetLoc() int {
 }
 
 func (le *LazyPoseidonInputs) GetType() string {
-	return "poseidon-params-" + strconv.Itoa(len(le.S))
+	constantNum := 0
+	for _, s := range le.S {
+		if IsConstant(s) {
+			constantNum++
+		}
+	}
+	return "poseidon-params-" + strconv.Itoa(len(le.S)) + "-constants-" + strconv.Itoa(constantNum)
 }
 
 func (le *LazyPoseidonInputs) SetConsStaticR1CMapIfNotExists(r1cs *R1CS, table CoeffTable) error {
