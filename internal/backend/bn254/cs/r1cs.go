@@ -551,8 +551,48 @@ func (cs *R1CS) GetConstraints() [][]string {
 }
 
 func (cs *R1CS) GetLazyConstraints() [][]string {
-	// Not implemented
 	r := make([][]string, 0, len(cs.LazyCons))
+	for _, c := range cs.LazyCons {
+		// for each constraint, we build a string representation of it's L, R and O part
+		// if we are worried about perf for large cs, we could do a string builder + csv format.
+		var line [4]string
+		switch cc := c.(type) {
+		case *compiled.LazyMimcEncInputs:
+			line[0] = cs.vtoString(cc.S0)
+			line[1] = cs.vtoString(cc.HH)
+			line[2] = cs.vtoString(cc.V)
+			line[3] = fmt.Sprintf("@%d, ", cc.Loc)
+		case *compiled.LazyPoseidonInputs:
+			line[0] = ""
+			for i := range cc.S {
+				line[0] = line[0] + cs.vtoString(cc.S[i])
+			}
+			line[1] = cs.vtoString(cc.V)
+			line[2] = ""
+			line[3] = fmt.Sprintf("@%d, ", cc.Loc)
+		}
+		r = append(r, line[:])
+	}
+	return r
+}
+
+func (cs *R1CS) GetStaticR1C() []compiled.R1C {
+	if len(cs.LazyCons) > 0 {
+		return cs.LazyConsStaticR1CMap[cs.LazyCons[0].GetType(&cs.CoefT)]
+	}
+	return []compiled.R1C{}
+}
+
+func (cs *R1CS) GetStaticR1CConstraints() [][]string {
+	cons := cs.GetStaticR1C()
+	r := make([][]string, 0, len(cons))
+	for _, c := range cons {
+		var line [3]string
+		line[0] = cs.vtoString(c.L)
+		line[1] = cs.vtoString(c.R)
+		line[2] = cs.vtoString(c.O)
+		r = append(r, line[:])
+	}
 	return r
 }
 
