@@ -456,7 +456,7 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 		}()
 
 		go func() {
-			name := fmt.Sprintf("pk.A.%s.save", session)
+			name := fmt.Sprintf("%s.pk.A.save", session)
 			pkFile, err := os.Open(name)
 			if err != nil {
 				return
@@ -518,7 +518,7 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 		go computeAR1()
 
 		go func() {
-			name := fmt.Sprintf("pk.B1.%s.save", session)
+			name := fmt.Sprintf("%s.pk.B1.save", session)
 			pkFile, err := os.Open(name)
 			if err != nil {
 				return
@@ -561,7 +561,7 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 		}
 		go computeBS1()
 		go func() {
-			name := fmt.Sprintf("pk.Z.%s.save", session)
+			name := fmt.Sprintf("%s.pk.Z.save", session)
 			pkFile, err := os.Open(name)
 			if err != nil {
 				return
@@ -597,7 +597,7 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 			chKrs2Done <- err
 		}()
 		go func() {
-			name := fmt.Sprintf("pk.K.%s.save", session)
+			name := fmt.Sprintf("%s.pk.K.save", session)
 			pkFile, err := os.Open(name)
 			if err != nil {
 				return
@@ -648,7 +648,7 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 
 		chPkB2 := make(chan struct{}, 1)
 		go func() {
-			name := fmt.Sprintf("pk.B2.%s.save", session)
+			name := fmt.Sprintf("%s.pk.B2.save", session)
 			pkFile, err := os.Open(name)
 			if err != nil {
 				return

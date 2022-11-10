@@ -20,7 +20,9 @@
 package groth16
 
 import (
+	"fmt"
 	"io"
+	"os"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
@@ -201,6 +203,59 @@ func Prove(r1cs frontend.CompiledConstraintSystem, pk ProvingKey, fullWitness *w
 			return nil, witness.ErrInvalidWitness
 		}
 		return groth16_bw6633.Prove(_r1cs, pk.(*groth16_bw6633.ProvingKey), *w, opt)
+	default:
+		panic("unrecognized R1CS curve type")
+	}
+}
+
+func LazifyR1cs(r1cs frontend.CompiledConstraintSystem) {
+	switch _r1cs := r1cs.(type) {
+	case *backend_bn254.R1CS:
+		_r1cs.Lazify()
+	default:
+		panic("unrecognized R1CS curve type")
+	}
+}
+
+func ReadSegmentProveKey(filepath string) (pks []ProvingKey, err error) {
+	pks = make([]ProvingKey, 2)
+	// pkE
+	pks[0] = NewProvingKey(ecc.BN254)
+	// pkB2
+	pks[1] = NewProvingKey(ecc.BN254)
+
+	f0, _ := os.Open(filepath + ".pk.E.save")
+	_, err = pks[0].(*groth16_bn254.ProvingKey).UnsafeReadEFrom(f0)
+	if err != nil {
+		return pks, fmt.Errorf("read file error")
+	}
+	f0.Close()
+
+	f1, _ := os.Open(filepath + ".pk.B2.save")
+	_, err = pks[1].(*groth16_bn254.ProvingKey).UnsafeReadB2From(f1)
+	if err != nil {
+		return pks, fmt.Errorf("read file error")
+	}
+	f1.Close()
+
+	return pks, nil
+}
+
+func ProveRoll(r1cs frontend.CompiledConstraintSystem, pkE, pkB2 ProvingKey, fullWitness *witness.Witness, session string, opts ...backend.ProverOption) (Proof, error) {
+
+	// apply options
+	opt, err := backend.NewProverConfig(opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	switch _r1cs := r1cs.(type) {
+	case *backend_bn254.R1CS:
+		w, ok := fullWitness.Vector.(*witness_bn254.Witness)
+		if !ok {
+			return nil, witness.ErrInvalidWitness
+		}
+		return groth16_bn254.ProveRoll(_r1cs, pkE.(*groth16_bn254.ProvingKey), pkB2.(*groth16_bn254.ProvingKey), *w, opt, session)
 	default:
 		panic("unrecognized R1CS curve type")
 	}

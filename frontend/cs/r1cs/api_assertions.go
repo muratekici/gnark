@@ -32,7 +32,9 @@ func (system *r1cs) AssertIsEqual(i1, i2 frontend.Variable) {
 	r := system.toVariable(i1).(compiled.LinearExpression)
 	o := system.toVariable(i2).(compiled.LinearExpression)
 
-	system.addConstraint(newR1C(system.one(), r, o))
+	debug := system.AddDebugInfo("assertIsEqual", r, " == ", o)
+
+	system.addConstraint(newR1C(system.one(), r, o), debug)
 }
 
 // AssertIsDifferent constrain i1 and i2 to be different
@@ -62,7 +64,8 @@ func (system *r1cs) AssertIsBoolean(i1 frontend.Variable) {
 
 	// ensure v * (1 - v) == 0
 	_v := system.Sub(1, v)
-	system.addConstraint(newR1C(v, _v, o))
+	debug := system.AddDebugInfo("assertIsBoolean", v, " == (0|1)")
+	system.addConstraint(newR1C(v, _v, o), debug)
 }
 
 // AssertIsLessOrEqual adds assertion in constraint system  (v ⩽ bound)
@@ -85,6 +88,7 @@ func (system *r1cs) AssertIsLessOrEqual(_v frontend.Variable, bound frontend.Var
 }
 
 func (system *r1cs) mustBeLessOrEqVar(a, bound compiled.LinearExpression) {
+	debug := system.AddDebugInfo("mustBeLessOrEq", a, " <= ", bound)
 	nbBits := system.BitLen()
 
 	aBits := bits.ToBinary(system, a, bits.WithNbDigits(nbBits), bits.WithUnconstrainedOutputs())
@@ -118,7 +122,7 @@ func (system *r1cs) mustBeLessOrEqVar(a, bound compiled.LinearExpression) {
 		// if bound[i] == 0, t must be 0 or 1, thus ai must be 0 or 1 too
 		system.MarkBoolean(aBits[i].(compiled.LinearExpression)) // this does not create a constraint
 
-		system.addConstraint(newR1C(l, aBits[i], zero))
+		system.addConstraint(newR1C(l, aBits[i], zero), debug)
 	}
 
 }
