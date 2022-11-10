@@ -113,6 +113,9 @@ func GetConstraintsNum(variables []frontend.Variable, api frontend.API) int {
 			constantNum++
 		}
 	}
+	if constantNum == len(variables) {
+		return 0
+	}
 	return ConstraintsMap[len(variables)-2] - constantNum*3
 }
 func GetConstraintsNumLinear(variables []LinearExpression) int {
@@ -436,33 +439,35 @@ func (le *LazyPoseidonInputs) GetConstraintsNum() int {
 }
 
 func (le *LazyPoseidonInputs) FetchLazy(j int, r1cs *R1CS, coefs CoeffTable) R1C {
-	return FetchLazyConstraint(le.S, r1cs.LazyConsStaticR1CMap[le.GetType()], j, coefs)
+	return FetchLazyConstraint(le.S, r1cs.LazyConsStaticR1CMap[le.GetType(coefs)], j, coefs)
 }
 
 func (le *LazyPoseidonInputs) GetLoc() int {
 	return le.Loc
 }
 
-func (le *LazyPoseidonInputs) GetType() string {
+func (le *LazyPoseidonInputs) GetType(coefs CoeffTable) string {
 	constantNum := 0
-	for _, s := range le.S {
-		if IsConstant(s) {
+	targetStr := ""
+	for i, s := range le.S {
+		if v, is := ConstantValue(s, coefs); is {
 			constantNum++
+			targetStr += "-pos-" + strconv.Itoa(i) + "-val-" + v.String()
 		}
 	}
-	return "poseidon-params-" + strconv.Itoa(len(le.S)) + "-constants-" + strconv.Itoa(constantNum)
+	return "poseidon-params-" + strconv.Itoa(len(le.S)) + "-constants-" + strconv.Itoa(constantNum) + targetStr
 }
 
 func (le *LazyPoseidonInputs) SetConsStaticR1CMapIfNotExists(r1cs *R1CS, table CoeffTable) error {
-	if _, ok := r1cs.LazyConsStaticR1CMap[le.GetType()]; !ok {
-		r1cs.LazyConsOriginInputMap[le.GetType()] = le
-		r1cs.LazyConsStaticR1CMap[le.GetType()] = StaticPoseidonR1CS(le.V, table, le.S...)
+	if _, ok := r1cs.LazyConsStaticR1CMap[le.GetType(table)]; !ok {
+		r1cs.LazyConsOriginInputMap[le.GetType(table)] = le
+		r1cs.LazyConsStaticR1CMap[le.GetType(table)] = StaticPoseidonR1CS(le.V, table, le.S...)
 	}
 	return nil
 }
 
-func (le *LazyPoseidonInputs) GetShift(r1cs *R1CS) int {
-	return GetShift(le.V, r1cs.LazyConsOriginInputMap[le.GetType()].(*LazyPoseidonInputs).V)
+func (le *LazyPoseidonInputs) GetShift(r1cs *R1CS, table CoeffTable) int {
+	return GetShift(le.V, r1cs.LazyConsOriginInputMap[le.GetType(table)].(*LazyPoseidonInputs).V)
 }
 
 func (le *LazyPoseidonInputs) GetInitialIndex() int {

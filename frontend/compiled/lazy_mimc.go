@@ -35,10 +35,10 @@ type LazyInputs interface {
 	GetConstraintsNum() int
 	GetLoc() int
 	FetchLazy(j int, r1cs *R1CS, coefs CoeffTable) R1C
-	GetType() string
+	GetType(coefs CoeffTable) string
 	SetConsStaticR1CMapIfNotExists(r1cs *R1CS, coefs CoeffTable) error
 	GetInitialIndex() int
-	GetShift(r1cs *R1CS) int
+	GetShift(r1cs *R1CS, table CoeffTable) int
 	IsInput(j int, loc uint8) bool
 }
 
@@ -164,14 +164,14 @@ func fetchMimcLazy(S0, HH frontend.Variable, staticR1c []R1C, j int, Coefs Coeff
 }
 
 func (le *LazyMimcEncInputs) FetchLazy(j int, r1cs *R1CS, coefs CoeffTable) R1C {
-	return fetchMimcLazy(le.S0, le.HH, r1cs.LazyConsStaticR1CMap[le.GetType()], j, coefs)
+	return fetchMimcLazy(le.S0, le.HH, r1cs.LazyConsStaticR1CMap[le.GetType(coefs)], j, coefs)
 }
 
 func (le *LazyMimcEncInputs) GetLoc() int {
 	return le.Loc
 }
 
-func (le *LazyMimcEncInputs) GetType() string {
+func (le *LazyMimcEncInputs) GetType(coefs CoeffTable) string {
 	return "mimc-enc"
 }
 
@@ -261,9 +261,9 @@ func staticEncrypt(S0, HH, V frontend.Variable, Coefs CoeffTable) []R1C {
 }
 
 func (le *LazyMimcEncInputs) SetConsStaticR1CMapIfNotExists(r1cs *R1CS, table CoeffTable) error {
-	if _, ok := r1cs.LazyConsStaticR1CMap[le.GetType()]; !ok {
-		r1cs.LazyConsOriginInputMap[le.GetType()] = le
-		r1cs.LazyConsStaticR1CMap[le.GetType()] = staticEncrypt(le.S0, le.HH, le.V, table)
+	if _, ok := r1cs.LazyConsStaticR1CMap[le.GetType(table)]; !ok {
+		r1cs.LazyConsOriginInputMap[le.GetType(table)] = le
+		r1cs.LazyConsStaticR1CMap[le.GetType(table)] = staticEncrypt(le.S0, le.HH, le.V, table)
 	}
 	return nil
 }
@@ -276,6 +276,6 @@ func GetShift(V, V0 frontend.Variable) int {
 	return shift
 }
 
-func (le *LazyMimcEncInputs) GetShift(r1cs *R1CS) int {
-	return GetShift(le.V, r1cs.LazyConsOriginInputMap[le.GetType()].(*LazyMimcEncInputs).V)
+func (le *LazyMimcEncInputs) GetShift(r1cs *R1CS, table CoeffTable) int {
+	return GetShift(le.V, r1cs.LazyConsOriginInputMap[le.GetType(table)].(*LazyMimcEncInputs).V)
 }

@@ -208,6 +208,16 @@ func (system *r1cs) AddLazyMimcEnc(s, h, v frontend.Variable) {
 // AddLazyPoseidon for Dynamic expanding of poseidon
 func (system *r1cs) AddLazyPoseidon(v frontend.Variable, s ...frontend.Variable) {
 	sLinear, _ := system.toVariables(s...)
+	constantCounts := 0
+	for _, ss := range s {
+		if _, isConstant := system.ConstantValue(ss); isConstant {
+			constantCounts += 1
+		}
+	}
+	// if all poseidon parameters are constant, we should skipped
+	if constantCounts == len(s) {
+		return
+	}
 	lazyPosiedonCons := newLazyPoseidonEncInputs(sLinear, v.(compiled.LinearExpression), len(system.Constraints))
 	system.LazyCons = append(system.LazyCons, &lazyPosiedonCons)
 }

@@ -294,7 +294,7 @@ func (cs *R1CS) solveGeneralConstraint(idx int, solution *solution, a, b, c *fr.
 	j := cs.LazyConsMap[idx].Index
 
 	cons := cs.LazyCons[i]
-	shift := cons.GetShift(&cs.R1CS)
+	shift := cons.GetShift(&cs.R1CS, &cs.CoefT)
 
 	return cs.solveLazyConstraint(cons, j, shift, solution, a, b, c)
 }

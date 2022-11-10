@@ -948,7 +948,7 @@ func setupLazyABC(r1cs *cs.R1CS, domain *fft.Domain, toxicWaste toxicWaste) (A [
 	var w fr.Element
 	w.Set(&domain.Generator)
 	wi := fr.One()
-	t := make([]fr.Element, len(r1cs.Constraints)+273*len(r1cs.LazyCons)+1)
+	t := make([]fr.Element, len(r1cs.Constraints)+r1cs.LazyCons.GetConstraintsAll()+1)
 	for i := 0; i < len(t); i++ {
 		t[i].Sub(&toxicWaste.t, &wi)
 		wi.Mul(&wi, &w) // TODO this is already pre computed in fft.Domain
@@ -1023,7 +1023,7 @@ func setupLazyABC(r1cs *cs.R1CS, domain *fft.Domain, toxicWaste toxicWaste) (A [
 	idx := len(r1cs.Constraints)
 	for _, li := range r1cs.LazyCons {
 		numJ := li.GetConstraintsNum()
-		shift := li.GetShift(&r1cs.R1CS)
+		shift := li.GetShift(&r1cs.R1CS, &r1cs.CoefT)
 		for j := 0; j < numJ; j++ {
 			row := li.FetchLazy(j, &r1cs.R1CS, &r1cs.CoefT)
 
