@@ -181,6 +181,7 @@ func TestE2ECompile(t *testing.T) {
 		fmt.Println("Size of cccs", size.Of(cccs))
 		fmt.Printf("NbCons: %d, NbLazyCons: %d, NbLazyConsExpanded: %d\n", cccs.GetNbConstraints(),
 			len(cccs.LazyCons), cccs.LazyCons.GetConstraintsAll())
+		fmt.Println("#coefs:", len(cccs.CoefT.Coeffs), len(cccs.CoefT.CoeffsIDsInt64), len(cccs.CoefT.CoeffsIDsLarge))
 		cTFile, err := os.Create("ccs.ct.save")
 		assert.NoError(err, "ccs.ct.save")
 		cnt, err := cccs.WriteCTTo(cTFile)

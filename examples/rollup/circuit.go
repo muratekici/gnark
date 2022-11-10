@@ -27,9 +27,9 @@ import (
 )
 
 const (
-	nbAccounts = 16  // 16 accounts so we know that the proof length is 5
-	depth      = 5   // size fo the inclusion proofs
-	batchSize  = 100 // nbTranfers to batch in a proof
+	nbAccounts = 16 // 16 accounts so we know that the proof length is 5
+	depth      = 5  // size fo the inclusion proofs
+	batchSize  = 10 // nbTranfers to batch in a proof
 )
 
 // Circuit "toy" rollup circuit where an operator can generate a proof that he processed
