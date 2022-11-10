@@ -475,6 +475,7 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 		fmt.Println("MSM bs2 finished, time", time.Since(time0), time.Since(timeS))
 		time0 = time.Now()
 
+		fmt.Println("....size of pkB2:", size.Of(pkB2))
 		pkB2.G2.B = make([]bn254.G2Affine, 0)
 	}
 	fmt.Println("....size of pkB2:", size.Of(pkB2))
@@ -652,7 +653,7 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 			if err != nil {
 				return
 			}
-			cnt, err := pkB2.UnsafeReadKFrom(pkFile)
+			cnt, err := pkB2.UnsafeReadB2From(pkFile)
 			if err != nil {
 				return
 			}
