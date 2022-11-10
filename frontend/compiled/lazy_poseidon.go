@@ -31,7 +31,7 @@ func FetchLazyConstraint(S []LinearExpression, staticR1c []R1C, j int, Coefs Coe
 			zero := LinearExpression{Pack(0, CoeffIdZero, schema.Public)}
 			addRes := S[i]
 			one := LinearExpression{Pack(0, CoeffIdOne, schema.Public)}
-			cID := Coefs.GetCoeffID(constants.RC[len(S)-2][i])
+			cID := Coefs.GetCoeffID(constants.RC[len(S)-2][i+1])
 
 			if cID == -1 {
 				os.Exit(-1)
@@ -61,7 +61,7 @@ func FetchLazyConstraint(S []LinearExpression, staticR1c []R1C, j int, Coefs Coe
 			zero := LinearExpression{Pack(0, CoeffIdZero, schema.Public)}
 			addRes := S[i]
 			one := LinearExpression{Pack(0, CoeffIdOne, schema.Public)}
-			cID := Coefs.GetCoeffID(constants.RC[len(S)-2][i])
+			cID := Coefs.GetCoeffID(constants.RC[len(S)-2][i+1])
 
 			if cID == -1 {
 				os.Exit(-1)
