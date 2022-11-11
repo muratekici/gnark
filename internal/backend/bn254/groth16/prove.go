@@ -330,7 +330,7 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 	session string) (*Proof, error) {
 	timeS := time.Now()
 	time0 := time.Now()
-	log := logger.Logger().With().Str("curve", r1cs.CurveID().String()).Int("nbConstraints", len(r1cs.Constraints)).Str("backend", "groth16").Logger()
+	log := logger.Logger().With().Str("curve", r1cs.CurveID().String()).Int("nbConstraints", len(r1cs.Constraints)+r1cs.LazyCons.GetConstraintsAll()).Str("backend", "groth16").Logger()
 
 	proof := &Proof{}
 
