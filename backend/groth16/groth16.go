@@ -241,6 +241,30 @@ func ReadSegmentProveKey(filepath string) (pks []ProvingKey, err error) {
 	return pks, nil
 }
 
+func LoadR1CSFromFile(filepath string) (r1cs frontend.CompiledConstraintSystem, err error) {
+	cccs := &backend_bn254.R1CS{}
+	ccsFile, err := os.Open(fmt.Sprintf("%s.ccs.save", filepath))
+	if err != nil {
+		return r1cs, err
+	}
+	_, err = cccs.ReadFrom(ccsFile)
+	ccsFile.Close()
+	if err != nil {
+		return r1cs, err
+	}
+
+	ctFile, err := os.Open(fmt.Sprintf("%s.ccs.ct.save", filepath))
+	if err != nil {
+		return r1cs, err
+	}
+	_, err = cccs.ReadCTFrom(ctFile)
+	ctFile.Close()
+	if err != nil {
+		return r1cs, err
+	}
+	return cccs, nil
+}
+
 func ProveRoll(r1cs frontend.CompiledConstraintSystem, pkE, pkB2 ProvingKey, fullWitness *witness.Witness, session string, opts ...backend.ProverOption) (Proof, error) {
 
 	// apply options
