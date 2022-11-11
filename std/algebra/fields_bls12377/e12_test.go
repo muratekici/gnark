@@ -37,7 +37,7 @@ type fp12Add struct {
 func (circuit *fp12Add) Define(api frontend.API) error {
 	expected := E12{}
 	expected.Add(api, circuit.A, circuit.B)
-	expected.MustBeEqual(api, circuit.C)
+	expected.AssertIsEqual(api, circuit.C)
 	return nil
 }
 
@@ -68,7 +68,7 @@ type fp12Sub struct {
 func (circuit *fp12Sub) Define(api frontend.API) error {
 	expected := E12{}
 	expected.Sub(api, circuit.A, circuit.B)
-	expected.MustBeEqual(api, circuit.C)
+	expected.AssertIsEqual(api, circuit.C)
 	return nil
 }
 
@@ -100,7 +100,7 @@ func (circuit *fp12Mul) Define(api frontend.API) error {
 	expected := E12{}
 
 	expected.Mul(api, circuit.A, circuit.B)
-	expected.MustBeEqual(api, circuit.C)
+	expected.AssertIsEqual(api, circuit.C)
 	return nil
 }
 
@@ -131,7 +131,7 @@ type fp12Square struct {
 func (circuit *fp12Square) Define(api frontend.API) error {
 
 	s := circuit.A.Square(api, circuit.A)
-	s.MustBeEqual(api, circuit.B)
+	s.AssertIsEqual(api, circuit.B)
 	return nil
 }
 
@@ -163,8 +163,8 @@ func (circuit *fp12CycloSquare) Define(api frontend.API) error {
 	var u, v E12
 	u.Square(api, circuit.A)
 	v.CyclotomicSquare(api, circuit.A)
-	u.MustBeEqual(api, v)
-	u.MustBeEqual(api, circuit.B)
+	u.AssertIsEqual(api, v)
+	u.AssertIsEqual(api, circuit.B)
 	return nil
 }
 
@@ -204,8 +204,8 @@ func (circuit *fp12CycloSquareCompressed) Define(api frontend.API) error {
 	u.Square(api, circuit.A)
 	v.CyclotomicSquareCompressed(api, circuit.A)
 	v.Decompress(api, v)
-	u.MustBeEqual(api, v)
-	u.MustBeEqual(api, circuit.B)
+	u.AssertIsEqual(api, v)
+	u.AssertIsEqual(api, circuit.B)
 	return nil
 }
 
@@ -243,7 +243,7 @@ type fp12Conjugate struct {
 func (circuit *fp12Conjugate) Define(api frontend.API) error {
 	expected := E12{}
 	expected.Conjugate(api, circuit.A)
-	expected.MustBeEqual(api, circuit.C)
+	expected.AssertIsEqual(api, circuit.C)
 	return nil
 }
 
@@ -273,15 +273,15 @@ func (circuit *fp12Frobenius) Define(api frontend.API) error {
 
 	fb := E12{}
 	fb.Frobenius(api, circuit.A)
-	fb.MustBeEqual(api, circuit.C)
+	fb.AssertIsEqual(api, circuit.C)
 
 	fbSquare := E12{}
 	fbSquare.FrobeniusSquare(api, circuit.A)
-	fbSquare.MustBeEqual(api, circuit.D)
+	fbSquare.AssertIsEqual(api, circuit.D)
 
 	fbCube := E12{}
 	fbCube.FrobeniusCube(api, circuit.A)
-	fbCube.MustBeEqual(api, circuit.E)
+	fbCube.AssertIsEqual(api, circuit.E)
 	return nil
 }
 
@@ -315,7 +315,7 @@ func (circuit *fp12Inverse) Define(api frontend.API) error {
 	expected := E12{}
 
 	expected.Inverse(api, circuit.A)
-	expected.MustBeEqual(api, circuit.C)
+	expected.AssertIsEqual(api, circuit.C)
 	return nil
 }
 
@@ -336,6 +336,35 @@ func TestInverseFp12(t *testing.T) {
 	assert.SolvingSucceeded(&circuit, &witness, test.WithCurves(ecc.BW6_761))
 }
 
+type e12Div struct {
+	A, B, C E12
+}
+
+func (circuit *e12Div) Define(api frontend.API) error {
+	var expected E12
+
+	expected.DivUnchecked(api, circuit.A, circuit.B)
+	expected.AssertIsEqual(api, circuit.C)
+	return nil
+}
+
+func TestDivFp12(t *testing.T) {
+
+	// witness values
+	var a, b, c bls12377.E12
+	a.SetRandom()
+	b.SetRandom()
+	c.Inverse(&b).Mul(&c, &a)
+
+	var witness e12Div
+	witness.A.Assign(&a)
+	witness.B.Assign(&b)
+	witness.C.Assign(&c)
+
+	assert := test.NewAssert(t)
+	assert.SolvingSucceeded(&e12Div{}, &witness, test.WithCurves(ecc.BW6_761))
+}
+
 type fp12FixedExpo struct {
 	A E12
 	C E12 `gnark:",public"`
@@ -346,7 +375,7 @@ func (circuit *fp12FixedExpo) Define(api frontend.API) error {
 
 	expo := uint64(9586122913090633729)
 	expected.Expt(api, circuit.A, expo)
-	expected.MustBeEqual(api, circuit.C)
+	expected.AssertIsEqual(api, circuit.C)
 	return nil
 }
 
@@ -383,7 +412,7 @@ type fp12MulBy034 struct {
 func (circuit *fp12MulBy034) Define(api frontend.API) error {
 
 	circuit.A.MulBy034(api, circuit.B, circuit.C)
-	circuit.A.MustBeEqual(api, circuit.W)
+	circuit.A.AssertIsEqual(api, circuit.W)
 	return nil
 }
 

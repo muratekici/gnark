@@ -36,7 +36,7 @@ type fp6Add struct {
 func (circuit *fp6Add) Define(api frontend.API) error {
 	expected := E6{}
 	expected.Add(api, circuit.A, circuit.B)
-	expected.MustBeEqual(api, circuit.C)
+	expected.AssertIsEqual(api, circuit.C)
 	return nil
 }
 
@@ -67,7 +67,7 @@ type fp6Sub struct {
 func (circuit *fp6Sub) Define(api frontend.API) error {
 	expected := E6{}
 	expected.Sub(api, circuit.A, circuit.B)
-	expected.MustBeEqual(api, circuit.C)
+	expected.AssertIsEqual(api, circuit.C)
 	return nil
 }
 
@@ -99,7 +99,7 @@ func (circuit *fp6Mul) Define(api frontend.API) error {
 	expected := E6{}
 
 	expected.Mul(api, circuit.A, circuit.B)
-	expected.MustBeEqual(api, circuit.C)
+	expected.AssertIsEqual(api, circuit.C)
 	return nil
 }
 
@@ -132,7 +132,7 @@ func (circuit *fp6MulByNonResidue) Define(api frontend.API) error {
 
 	expected.MulByNonResidue(api, circuit.A)
 
-	expected.MustBeEqual(api, circuit.C)
+	expected.AssertIsEqual(api, circuit.C)
 	return nil
 }
 
@@ -164,7 +164,7 @@ func (circuit *fp6Inverse) Define(api frontend.API) error {
 
 	expected.Inverse(api, circuit.A)
 
-	expected.MustBeEqual(api, circuit.C)
+	expected.AssertIsEqual(api, circuit.C)
 	return nil
 }
 
@@ -184,6 +184,35 @@ func TestInverseFp6(t *testing.T) {
 	assert := test.NewAssert(t)
 	assert.SolvingSucceeded(&circuit, &witness, test.WithCurves(ecc.BW6_761))
 
+}
+
+type e6Div struct {
+	A, B, C E6
+}
+
+func (circuit *e6Div) Define(api frontend.API) error {
+	var expected E6
+
+	expected.DivUnchecked(api, circuit.A, circuit.B)
+	expected.AssertIsEqual(api, circuit.C)
+	return nil
+}
+
+func TestDivFp6(t *testing.T) {
+
+	// witness values
+	var a, b, c bls12377.E6
+	a.SetRandom()
+	b.SetRandom()
+	c.Inverse(&b).Mul(&c, &a)
+
+	var witness e6Div
+	witness.A.Assign(&a)
+	witness.B.Assign(&b)
+	witness.C.Assign(&c)
+
+	assert := test.NewAssert(t)
+	assert.SolvingSucceeded(&e6Div{}, &witness, test.WithCurves(ecc.BW6_761))
 }
 
 func TestMulByFp2Fp6(t *testing.T) {

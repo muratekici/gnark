@@ -99,6 +99,32 @@ func (system *scs) AssertIsLessOrEqual(v frontend.Variable, bound frontend.Varia
 	}
 }
 
+func (system *scs) AssertIsLess(v frontend.Variable, bound frontend.Variable) {
+	system.AssertIsLessN(v, bound, system.BitLen())
+}
+
+// AssertIsLessN fails if  v >= bound
+func (system *scs) AssertIsLessN(v frontend.Variable, bound frontend.Variable, n int) {
+	switch b := bound.(type) {
+	case compiled.Term:
+		system.mustBeLessOrEqVar(v.(compiled.Term), b)
+	default:
+		system.mustBeLessOrEqCst(v.(compiled.Term), utils.FromInterface(b))
+	}
+
+	system.AssertIsDifferent(v, bound)
+}
+
+// AssertIsLessOrEqualN fails if  v > bound
+func (system *scs) AssertIsLessOrEqualN(v frontend.Variable, bound frontend.Variable, n int) {
+	switch b := bound.(type) {
+	case compiled.Term:
+		system.mustBeLessOrEqVar(v.(compiled.Term), b)
+	default:
+		system.mustBeLessOrEqCst(v.(compiled.Term), utils.FromInterface(b))
+	}
+}
+
 func (system *scs) mustBeLessOrEqVar(a compiled.Term, bound compiled.Term) {
 
 	debug := system.AddDebugInfo("mustBeLessOrEq", a, " <= ", bound)
