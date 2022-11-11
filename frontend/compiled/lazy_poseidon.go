@@ -46,6 +46,9 @@ func FetchLazyConstraint(S []LinearExpression, staticR1c []R1C, j int, Coefs Coe
 				}
 				addRes = append(addRes, v...)
 			}
+			if !sort.IsSorted(addRes) {
+				sort.Sort(addRes)
+			}
 			addRes = reduce(addRes, Coefs)
 			resL := addRes.Clone()
 			resR := addRes.Clone()
@@ -75,6 +78,9 @@ func FetchLazyConstraint(S []LinearExpression, staticR1c []R1C, j int, Coefs Coe
 					continue
 				}
 				addRes = append(addRes, v...)
+			}
+			if !sort.IsSorted(addRes) {
+				sort.Sort(addRes)
 			}
 			addRes = reduce(addRes, Coefs)
 			resL := staticR1c[i*3+2].L.Clone()
