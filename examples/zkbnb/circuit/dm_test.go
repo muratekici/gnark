@@ -137,7 +137,7 @@ func TestE2EProve(t *testing.T) {
 	}
 	runtime.GC()
 	{
-		name := fmt.Sprintf("pk.E.%s.save", session)
+		name := fmt.Sprintf("%s.pk.E.save", session)
 		pkFile, err := os.Open(name)
 		assert.NoError(err, "open pkFile")
 		fmt.Println("size of pkE before read:", size.Of(pkE))
@@ -148,7 +148,7 @@ func TestE2EProve(t *testing.T) {
 		fmt.Printf("Read %d bytes from pk.E.save %v\n", cnt, time.Since(mainStart))
 		pkFile.Close()
 
-		name = fmt.Sprintf("pk.B2.%s.save", session)
+		name = fmt.Sprintf("%s.pk.B2.save", session)
 		pkFile, err = os.Open(name)
 		assert.NoError(err, "open pkFile")
 		cnt, err = pkB2.UnsafeReadB2From(pkFile)
@@ -156,7 +156,7 @@ func TestE2EProve(t *testing.T) {
 		fmt.Printf("Read %d bytes from pk.B2.save %v\n", cnt, time.Since(mainStart))
 		pkFile.Close()
 
-		name = fmt.Sprintf("vk.%s.save", session)
+		name = fmt.Sprintf("%s.vk.save", session)
 		vkFile, err := os.Open(name)
 		assert.NoError(err, "open vkFile")
 		cnt, err = vk.UnsafeReadFrom(vkFile)
@@ -271,7 +271,7 @@ func TestE2EWhole(t *testing.T) {
 	var pkE, pkB2 groth16_bn254.ProvingKey
 	var vk groth16_bn254.VerifyingKey
 	{
-		name := fmt.Sprintf("pk.E.%s.save", session)
+		name := fmt.Sprintf("%s.pk.E.save", session)
 		pkFile, err := os.Open(name)
 		assert.NoError(err, "open pkFile")
 		fmt.Println("size of pkE before read:", size.Of(pkE))
@@ -282,7 +282,7 @@ func TestE2EWhole(t *testing.T) {
 		fmt.Printf("Read %d bytes from pk.E.save %v\n", cnt, time.Since(mainStart))
 		pkFile.Close()
 
-		name = fmt.Sprintf("pk.B2.%s.save", session)
+		name = fmt.Sprintf("%s.pk.B2.save", session)
 		pkFile, err = os.Open(name)
 		assert.NoError(err, "open pkFile")
 		cnt, err = pkB2.UnsafeReadB2From(pkFile)
@@ -290,7 +290,7 @@ func TestE2EWhole(t *testing.T) {
 		fmt.Printf("Read %d bytes from pk.B2.save %v\n", cnt, time.Since(mainStart))
 		pkFile.Close()
 
-		name = fmt.Sprintf("vk.%s.save", session)
+		name = fmt.Sprintf("%s.vk.save", session)
 		vkFile, err := os.Open(name)
 		assert.NoError(err, "open vkFile")
 		cnt, err = vk.UnsafeReadFrom(vkFile)
@@ -655,7 +655,7 @@ func TestVerifyLazy(t *testing.T) {
 					return nil
 				}
 				shiftI := shift
-				if cons.IsInput(ij, 1) {
+				if cons.IsInput(ij, locValue) {
 					shiftI = 0
 				}
 				for idx, t := range l {
