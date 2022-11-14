@@ -24,6 +24,7 @@ import (
 	"github.com/fxamacker/cbor/v2"
 	"io"
 	"math/big"
+	"os"
 	"reflect"
 	"runtime"
 	"strings"
@@ -320,12 +321,6 @@ func (cs *R1CS) solveLazyConstraint(li compiled.LazyInputs, j, shift int, soluti
 				vID += shiftI
 				t.SetWireID(vID)
 			}
-			/// vID := t.WireID() + shiftI
-			// vID := t.WireID()
-			// if t.VariableVisibility() == schema.Internal {
-			// 	vID += shiftI
-			// 	t.SetWireID(vID)
-			// }
 
 			// wire is already computed, we just accumulate in val
 			if solution.solved[vID] {
@@ -712,7 +707,7 @@ func (cs *R1CS) Lazify() map[int]int {
 				cs.Levels[i][j] = v
 			} else {
 				badCnt++
-				panic("bad map Loc")
+				panic(fmt.Sprintf("bad map loc at %d, %d", i, j))
 			}
 		}
 	}
@@ -759,6 +754,22 @@ func (cs *R1CS) WriteTo(w io.Writer) (int64, error) {
 	return _w.N, err
 }
 
+func (cs *R1CS) WriteConstraintsTo(w io.Writer) (int64, error) {
+	_w := ioutils.WriterCounter{W: w} // wraps writer to count the bytes written
+	enc, err := cbor.CoreDetEncOptions().EncMode()
+	if err != nil {
+		return 0, err
+	}
+	if err != nil {
+		return 0, err
+	}
+	encoder := enc.NewEncoder(&_w)
+
+	// encode our object
+	err = encoder.Encode(cs.R1CS.Constraints)
+	return _w.N, err
+}
+
 func (cs *R1CS) WriteCTTo(w io.Writer) (int64, error) {
 	bts, err := json.Marshal(cs.CoefT)
 	if err != nil {
@@ -775,8 +786,8 @@ func (cs *R1CS) ReadFrom(r io.Reader) (int64, error) {
 		return 0, fmt.Errorf("cbor tags: %w", err)
 	}
 	dm, err := cbor.DecOptions{
-		MaxArrayElements: 268435456, // 134217728,
-		MaxMapPairs:      268435456, // 134217728,
+		MaxArrayElements: 268435456,
+		MaxMapPairs:      268435456,
 	}.DecModeWithTags(tags)
 
 	if err != nil {
@@ -784,6 +795,27 @@ func (cs *R1CS) ReadFrom(r io.Reader) (int64, error) {
 	}
 	decoder := dm.NewDecoder(r)
 	if err := decoder.Decode(&cs); err != nil {
+		return int64(decoder.NumBytesRead()), err
+	}
+
+	if _, ok := os.LookupEnv("WITHDEBUGINFO"); !ok {
+		cs.DebugInfo = make([]compiled.LogEntry, 0)
+		cs.MDebug = make(map[int]int, 0)
+	}
+	return int64(decoder.NumBytesRead()), nil
+}
+
+func (cs *R1CS) ReadConstraintsFrom(r io.Reader) (int64, error) {
+	dm, err := cbor.DecOptions{
+		MaxArrayElements: 268435456,
+		MaxMapPairs:      268435456,
+	}.DecMode()
+
+	if err != nil {
+		return 0, err
+	}
+	decoder := dm.NewDecoder(r)
+	if err := decoder.Decode(&cs.R1CS.Constraints); err != nil {
 		return int64(decoder.NumBytesRead()), err
 	}
 

@@ -367,20 +367,7 @@ func SetupWithDump(r1cs *cs.R1CS, session string) error { //, pk *ProvingKey, vk
 	return nil
 }
 
-func SetupLazyWithDump(r1cs *cs.R1CS, session string) error { //, pk *ProvingKey, vk *VerifyingKey) error {
-	// TODO: remove dump r1cs
-	///////////////////////////////////////////
-	cTFile, err := os.Create(fmt.Sprintf("%s.ccs.ct.save", session))
-	cnt, err := r1cs.WriteCTTo(cTFile)
-	fmt.Printf("....Wrote %d bytes to ccs.ct.save\n", cnt)
-	cTFile.Close()
-	// remove CoefT from cbor
-	ccsFile, err := os.Create(fmt.Sprintf("%s.ccs.save", session))
-	cnt, err = r1cs.WriteTo(ccsFile)
-	fmt.Printf("....Wrote %d bytes to ccs.save\n", cnt)
-	ccsFile.Close()
-	/////////////////////////////////////////
-
+func SetupLazyWithDump(r1cs *cs.R1CS, session string) error {
 	var pk ProvingKey
 	var vk VerifyingKey
 
@@ -518,11 +505,10 @@ func SetupLazyWithDump(r1cs *cs.R1CS, session string) error { //, pk *ProvingKey
 		if err != nil {
 			return err
 		}
-		cnt, err := pk.WriteRawETo(pkFile)
+		_, err = pk.WriteRawETo(pkFile)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Wrote %d bytes to pk.E.save\n", cnt)
 
 		// vk
 		g1Scalars = make([]fr.Element, 0, nbPublicWires)
@@ -558,11 +544,10 @@ func SetupLazyWithDump(r1cs *cs.R1CS, session string) error { //, pk *ProvingKey
 		if err != nil {
 			return err
 		}
-		cnt, err = vk.WriteRawTo(vkFile)
+		_, err = vk.WriteRawTo(vkFile)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Wrote %d bytes to vk.save\n", cnt)
 	}
 
 	// A part
@@ -578,11 +563,10 @@ func SetupLazyWithDump(r1cs *cs.R1CS, session string) error { //, pk *ProvingKey
 		if err != nil {
 			return err
 		}
-		cnt, err := pk.WriteRawATo(pkFile)
+		_, err = pk.WriteRawATo(pkFile)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Wrote %d bytes to pk.A.save\n", cnt)
 	}
 
 	// B1 part
@@ -598,11 +582,10 @@ func SetupLazyWithDump(r1cs *cs.R1CS, session string) error { //, pk *ProvingKey
 		if err != nil {
 			return err
 		}
-		cnt, err := pk.WriteRawB1To(pkFile)
+		_, err = pk.WriteRawB1To(pkFile)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Wrote %d bytes to pk.B1.save\n", cnt)
 	}
 
 	// K part
@@ -618,11 +601,10 @@ func SetupLazyWithDump(r1cs *cs.R1CS, session string) error { //, pk *ProvingKey
 		if err != nil {
 			return err
 		}
-		cnt, err := pk.WriteRawKTo(pkFile)
+		_, err = pk.WriteRawKTo(pkFile)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Wrote %d bytes to pk.K.save\n", cnt)
 	}
 
 	// Z part
@@ -639,11 +621,10 @@ func SetupLazyWithDump(r1cs *cs.R1CS, session string) error { //, pk *ProvingKey
 		if err != nil {
 			return err
 		}
-		cnt, err := pk.WriteRawZTo(pkFile)
+		_, err = pk.WriteRawZTo(pkFile)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Wrote %d bytes to pk.Z.save\n", cnt)
 	}
 
 	// B2 part
@@ -659,11 +640,10 @@ func SetupLazyWithDump(r1cs *cs.R1CS, session string) error { //, pk *ProvingKey
 		if err != nil {
 			return err
 		}
-		cnt, err := pk.WriteRawB2To(pkFile)
+		_, err = pk.WriteRawB2To(pkFile)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Wrote %d bytes to pk.B2.save\n", cnt)
 	}
 
 	return nil
