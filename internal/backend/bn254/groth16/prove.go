@@ -17,7 +17,6 @@
 package groth16
 
 import (
-	"github.com/DmitriyVTitov/size"
 	"github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"os"
@@ -328,9 +327,8 @@ func computeH(a, b, c []fr.Element, domain *fft.Domain) []fr.Element {
 
 func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witness, opt backend.ProverConfig,
 	session string) (*Proof, error) {
-	timeS := time.Now()
-	time0 := time.Now()
 	log := logger.Logger().With().Str("curve", r1cs.CurveID().String()).Int("nbConstraints", len(r1cs.Constraints)+r1cs.LazyCons.GetConstraintsAll()).Str("backend", "groth16").Logger()
+	timeS := time.Now()
 
 	proof := &Proof{}
 
@@ -343,15 +341,11 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 		a := make([]fr.Element, nbCons, card)
 		b := make([]fr.Element, nbCons, card)
 		c := make([]fr.Element, nbCons, card)
-		fmt.Println("Prover inited, time", time.Since(time0))
-		time0 = time.Now()
 
 		var err error
 		if wireValues, err = r1cs.Solve(witness, a, b, c, opt); err != nil {
 			return nil, err
 		}
-		fmt.Println("Solver finished, time", time.Since(time0))
-		time0 = time.Now()
 
 		// set the wire values in regular form
 		utils.Parallelize(len(wireValues), func(start, end int) {
@@ -359,8 +353,6 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 				wireValues[i].FromMont()
 			}
 		})
-		fmt.Println("Solver to regular finished, time", time.Since(time0), time.Since(timeS))
-		time0 = time.Now()
 
 		// H (witness reduction / FFT part)
 		chHDone := make(chan struct{}, 1)
@@ -373,8 +365,6 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 			chHDone <- struct{}{}
 		}()
 		<-chHDone
-		fmt.Println("ComputeH finished, time", time.Since(time0), time.Since(timeS))
-		time0 = time.Now()
 	}
 	runtime.GC()
 
@@ -391,8 +381,6 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 		if _, err := _s.SetRandom(); err != nil {
 			return nil, err
 		}
-		// _r.SetInt64(666777) // TODO test only
-		// _s.SetInt64(9229997)
 		_kr.Mul(&_r, &_s).Neg(&_kr)
 
 		_r.FromMont()
@@ -405,11 +393,6 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 		deltas = curve.BatchScalarMultiplicationG1(&pkE.G1.Delta, []fr.Element{_r, _s, _kr})
 	}
 	n := runtime.NumCPU()
-
-	fmt.Println("Prepared MSM, time", time.Since(time0), time.Since(timeS))
-	time0 = time.Now()
-	//var wireValuesA, wireValuesB []fr.Element
-	//chWireValuesA, chWireValuesB := make(chan struct{}, 1), make(chan struct{}, 1)
 
 	//Bs2
 	var pkA *ProvingKey
@@ -462,23 +445,17 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 				return
 			}
 			pk := ProvingKey{}
-			cnt, err := pk.UnsafeReadAFrom(pkFile)
+			_, err = pk.UnsafeReadAFrom(pkFile)
 			if err != nil {
 				return
 			}
-			fmt.Printf("Read %d bytes from pk.A.save\n", cnt)
 			chPkA <- &pk
 			close(chPkA)
 		}()
 		<-chBs2Done
 
-		fmt.Println("MSM bs2 finished, time", time.Since(time0), time.Since(timeS))
-		time0 = time.Now()
-
-		fmt.Println("....size of pkB2:", size.Of(pkB2))
 		pkB2.G2.B = make([]bn254.G2Affine, 0)
 	}
-	fmt.Println("....size of pkB2:", size.Of(pkB2))
 	runtime.GC()
 
 	var pkB1 *ProvingKey
@@ -524,20 +501,16 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 				return
 			}
 			pk := ProvingKey{}
-			cnt, err := pk.UnsafeReadB1From(pkFile)
+			_, err = pk.UnsafeReadB1From(pkFile)
 			if err != nil {
 				return
 			}
-			fmt.Printf("Read %d bytes from pk.B1.save\n", cnt)
 			chPkB1 <- &pk
 			close(chPkB1)
 		}()
 		<-chArDone
 
 		pkA = nil
-
-		fmt.Println("MSM ar finished, time", time.Since(time0), time.Since(timeS))
-		time0 = time.Now()
 	}
 	runtime.GC()
 
@@ -567,20 +540,16 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 				return
 			}
 			pk := ProvingKey{}
-			cnt, err := pk.UnsafeReadZFrom(pkFile)
+			_, err = pk.UnsafeReadZFrom(pkFile)
 			if err != nil {
 				return
 			}
-			fmt.Printf("Read %d bytes from pk.Z.save\n", cnt)
 			chPkZ <- &pk
 			close(chPkZ)
 		}()
 		<-chBs1Done
 
 		pkB1 = nil
-
-		fmt.Println("MSM bs finished, time", time.Since(time0), time.Since(timeS))
-		time0 = time.Now()
 	}
 	runtime.GC()
 
@@ -603,20 +572,16 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 				return
 			}
 			pk := ProvingKey{}
-			cnt, err := pk.UnsafeReadKFrom(pkFile)
+			_, err = pk.UnsafeReadKFrom(pkFile)
 			if err != nil {
 				return
 			}
-			fmt.Printf("Read %d bytes from pk.K.save\n", cnt)
 			chPkK <- &pk
 			close(chPkK)
 		}()
 		<-chKrs2Done
 
 		pkZ = nil
-
-		fmt.Println("MSM krs2 finished, time", time.Since(time0), time.Since(timeS))
-		time0 = time.Now()
 	}
 	runtime.GC()
 
@@ -653,25 +618,17 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witnes
 			if err != nil {
 				return
 			}
-			cnt, err := pkB2.UnsafeReadB2From(pkFile)
+			_, err = pkB2.UnsafeReadB2From(pkFile)
 			if err != nil {
 				return
 			}
-			fmt.Printf("Read %d bytes from pk.B2.save\n", cnt)
 			close(chPkB2)
 		}()
 		<-chPkB2
 		<-chKrsDone
 
 		pkK = nil
-
-		fmt.Println("MSM krs finished, time", time.Since(time0), time.Since(timeS))
-		time0 = time.Now()
 	}
-
-	fmt.Println("....size of pkB2:", size.Of(pkB2))
-	time0 = time.Now()
-
 	log.Debug().Dur("took", time.Since(timeS)).Msg("prover done")
 
 	return proof, nil

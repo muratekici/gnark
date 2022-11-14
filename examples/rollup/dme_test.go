@@ -300,6 +300,10 @@ func TestE2EProve(t *testing.T) {
 	proof, err := groth16_bn254.ProveRoll(cccs, &pkE, &pkB2, *witnessFull.Vector.(*witness_bn254.Witness), opt, session)
 	assert.NoError(err, "prove")
 	fmt.Println("Finished proving", time.Since(mainStart))
+	cons := cccs.GetLazyConstraints()
+	for _, con := range cons {
+		fmt.Println(con)
+	}
 
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Verify proof
