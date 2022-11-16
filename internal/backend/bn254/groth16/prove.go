@@ -18,6 +18,7 @@ package groth16
 
 import (
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
+	"os"
 
 	curve "github.com/consensys/gnark-crypto/ecc/bn254"
 
@@ -321,4 +322,313 @@ func computeH(a, b, c []fr.Element, domain *fft.Domain) []fr.Element {
 	})
 
 	return a
+}
+
+func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness bn254witness.Witness, opt backend.ProverConfig,
+	session string) (*Proof, error) {
+	log := logger.Logger().With().Str("curve", r1cs.CurveID().String()).Int("nbConstraints", len(r1cs.Constraints)+r1cs.LazyCons.GetConstraintsAll()).Str("backend", "groth16").Logger()
+	timeS := time.Now()
+
+	proof := &Proof{}
+
+	var wireValues []fr.Element
+	var h []fr.Element
+
+	{
+		card := pkE.Card
+		nbCons := r1cs.GetNbConstraints() + r1cs.LazyCons.GetConstraintsAll()
+		a := make([]fr.Element, nbCons, card)
+		b := make([]fr.Element, nbCons, card)
+		c := make([]fr.Element, nbCons, card)
+
+		var err error
+		if wireValues, err = r1cs.Solve(witness, a, b, c, opt); err != nil {
+			return nil, err
+		}
+
+		// set the wire values in regular form
+		utils.Parallelize(len(wireValues), func(start, end int) {
+			for i := start; i < end; i++ {
+				wireValues[i].FromMont()
+			}
+		})
+
+		// H (witness reduction / FFT part)
+		chHDone := make(chan struct{}, 1)
+		go func() {
+			domain := fft.NewDomain(uint64(card))
+			h = computeH(a, b, c, domain)
+			a = nil
+			b = nil
+			c = nil
+			chHDone <- struct{}{}
+		}()
+		<-chHDone
+	}
+	runtime.GC()
+
+	// we need to copy and filter the wireValues for each multi exp
+	// as pk.G1.A, pk.G1.B and pk.G2.B may have (a significant) number of point at infinity
+	var deltas []curve.G1Affine
+	var r, s big.Int
+	{
+		// sample random r and s
+		var _r, _s, _kr fr.Element
+		if _, err := _r.SetRandom(); err != nil {
+			return nil, err
+		}
+		if _, err := _s.SetRandom(); err != nil {
+			return nil, err
+		}
+		_kr.Mul(&_r, &_s).Neg(&_kr)
+
+		_r.FromMont()
+		_s.FromMont()
+		_kr.FromMont()
+		_r.ToBigInt(&r)
+		_s.ToBigInt(&s)
+
+		// computes r[δ], s[δ], kr[δ]
+		deltas = curve.BatchScalarMultiplicationG1(&pkE.G1.Delta, []fr.Element{_r, _s, _kr})
+	}
+	n := runtime.NumCPU()
+
+	//Bs2
+	var pkA *ProvingKey
+	chPkA := make(chan *ProvingKey, 1)
+	var wireValuesB []fr.Element
+	{
+		chWireValuesB := make(chan struct{}, 1)
+		go func() {
+			wireValuesB = make([]fr.Element, len(wireValues)-int(pkE.NbInfinityB))
+			for i, j := 0, 0; j < len(wireValuesB); i++ {
+				if pkE.InfinityB[i] {
+					continue
+				}
+				wireValuesB[j] = wireValues[i]
+				j++
+			}
+			close(chWireValuesB)
+		}()
+		<-chWireValuesB
+
+		chBs2Done := make(chan error, 1)
+		// computeBS2 := func() {
+		go func() {
+			// Bs2 (1 multi exp G2 - size = len(wires))
+			var Bs, deltaS curve.G2Jac
+			// var deltaS curve.G2Jac
+
+			nbTasks := n
+			if nbTasks <= 16 {
+				// if we don't have a lot of CPUs, this may artificially split the MSM
+				nbTasks *= 2
+			}
+			if _, err := Bs.MultiExp(pkB2.G2.B, wireValuesB, ecc.MultiExpConfig{NbTasks: nbTasks}); err != nil {
+				chBs2Done <- err
+			}
+
+			deltaS.FromAffine(&pkE.G2.Delta)
+			deltaS.ScalarMultiplication(&deltaS, &s)
+			Bs.AddAssign(&deltaS)
+			Bs.AddMixed(&pkE.G2.Beta)
+
+			proof.Bs.FromJacobian(&Bs)
+			chBs2Done <- nil
+		}()
+
+		go func() {
+			name := fmt.Sprintf("%s.pk.A.save", session)
+			pkFile, err := os.Open(name)
+			if err != nil {
+				return
+			}
+			pk := ProvingKey{}
+			_, err = pk.UnsafeReadAFrom(pkFile)
+			if err != nil {
+				return
+			}
+			chPkA <- &pk
+			close(chPkA)
+		}()
+		<-chBs2Done
+
+		pkB2.G2.B = make([]curve.G2Affine, 0)
+	}
+	runtime.GC()
+
+	var pkB1 *ProvingKey
+	chPkB1 := make(chan *ProvingKey, 1)
+	var ar curve.G1Jac
+	var wireValuesA []fr.Element
+	{
+		pkA = <-chPkA
+
+		chWireValuesA := make(chan struct{}, 1)
+		go func() {
+			wireValuesA = make([]fr.Element, len(wireValues)-int(pkE.NbInfinityA))
+			for i, j := 0, 0; j < len(wireValuesA); i++ {
+				if pkE.InfinityA[i] {
+					continue
+				}
+				wireValuesA[j] = wireValues[i]
+				j++
+			}
+			close(chWireValuesA)
+		}()
+		<-chWireValuesA
+
+		chArDone := make(chan error, 1)
+		computeAR1 := func() {
+			// <-chWireValuesA
+			if _, err := ar.MultiExp(pkA.G1.A, wireValuesA, ecc.MultiExpConfig{NbTasks: n / 2}); err != nil {
+				chArDone <- err
+				close(chArDone)
+				return
+			}
+			ar.AddMixed(&pkE.G1.Alpha)
+			ar.AddMixed(&deltas[0])
+			proof.Ar.FromJacobian(&ar)
+			chArDone <- nil
+		}
+		go computeAR1()
+
+		go func() {
+			name := fmt.Sprintf("%s.pk.B1.save", session)
+			pkFile, err := os.Open(name)
+			if err != nil {
+				return
+			}
+			pk := ProvingKey{}
+			_, err = pk.UnsafeReadB1From(pkFile)
+			if err != nil {
+				return
+			}
+			chPkB1 <- &pk
+			close(chPkB1)
+		}()
+		<-chArDone
+
+		pkA = nil
+	}
+	runtime.GC()
+
+	var pkZ *ProvingKey
+	chPkZ := make(chan *ProvingKey, 1)
+	var bs1 curve.G1Jac
+	{
+		pkB1 = <-chPkB1
+
+		chBs1Done := make(chan error, 1)
+		computeBS1 := func() {
+			// <-chWireValuesB
+			if _, err := bs1.MultiExp(pkB1.G1.B, wireValuesB, ecc.MultiExpConfig{NbTasks: n / 2}); err != nil {
+				chBs1Done <- err
+				close(chBs1Done)
+				return
+			}
+			bs1.AddMixed(&pkE.G1.Beta)
+			bs1.AddMixed(&deltas[1])
+			chBs1Done <- nil
+		}
+		go computeBS1()
+		go func() {
+			name := fmt.Sprintf("%s.pk.Z.save", session)
+			pkFile, err := os.Open(name)
+			if err != nil {
+				return
+			}
+			pk := ProvingKey{}
+			_, err = pk.UnsafeReadZFrom(pkFile)
+			if err != nil {
+				return
+			}
+			chPkZ <- &pk
+			close(chPkZ)
+		}()
+		<-chBs1Done
+
+		pkB1 = nil
+	}
+	runtime.GC()
+
+	var pkK *ProvingKey
+	chPkK := make(chan *ProvingKey, 1)
+	var krs2 curve.G1Jac
+	{
+		pkZ = <-chPkZ
+
+		chKrs2Done := make(chan error, 1)
+		go func() {
+			// pkZ := <-chPkZ
+			_, err := krs2.MultiExp(pkZ.G1.Z, h, ecc.MultiExpConfig{NbTasks: n / 2})
+			chKrs2Done <- err
+		}()
+		go func() {
+			name := fmt.Sprintf("%s.pk.K.save", session)
+			pkFile, err := os.Open(name)
+			if err != nil {
+				return
+			}
+			pk := ProvingKey{}
+			_, err = pk.UnsafeReadKFrom(pkFile)
+			if err != nil {
+				return
+			}
+			chPkK <- &pk
+			close(chPkK)
+		}()
+		<-chKrs2Done
+
+		pkZ = nil
+	}
+	runtime.GC()
+
+	{
+		pkK = <-chPkK
+
+		chKrsDone := make(chan error, 1)
+		// computeKRS := func() {
+		go func() {
+			// we could NOT split the Krs multiExp in 2, and just append pk.G1.K and pk.G1.Z
+			// however, having similar lengths for our tasks helps with parallelism
+
+			// var krs, krs2, p1 curve.G1Jac
+			var krs, p1 curve.G1Jac
+			if _, err := krs.MultiExp(pkK.G1.K, wireValues[r1cs.NbPublicVariables:], ecc.MultiExpConfig{NbTasks: n / 2}); err != nil {
+				chKrsDone <- err
+				return
+			}
+			krs.AddMixed(&deltas[2])
+			p1.ScalarMultiplication(&bs1, &r)
+			krs.AddAssign(&p1)
+			p1.ScalarMultiplication(&ar, &s)
+			krs.AddAssign(&p1)
+			krs.AddAssign(&krs2)
+
+			proof.Krs.FromJacobian(&krs)
+			chKrsDone <- nil
+		}()
+
+		chPkB2 := make(chan struct{}, 1)
+		go func() {
+			name := fmt.Sprintf("%s.pk.B2.save", session)
+			pkFile, err := os.Open(name)
+			if err != nil {
+				return
+			}
+			_, err = pkB2.UnsafeReadB2From(pkFile)
+			if err != nil {
+				return
+			}
+			close(chPkB2)
+		}()
+		<-chPkB2
+		<-chKrsDone
+
+		pkK = nil
+	}
+	log.Debug().Dur("took", time.Since(timeS)).Msg("prover done")
+
+	return proof, nil
 }

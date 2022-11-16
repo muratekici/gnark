@@ -52,6 +52,7 @@ func NewBuilder(curve ecc.ID, config frontend.CompileConfig) (frontend.Builder, 
 type r1cs struct {
 	compiled.ConstraintSystem
 	Constraints []compiled.R1C
+	LazyCons    []compiled.LazyInputs
 
 	st     cs.CoeffTable
 	config frontend.CompileConfig
@@ -91,6 +92,13 @@ func newBuilder(curveID ecc.ID, config frontend.CompileConfig) *r1cs {
 func (system *r1cs) newInternalVariable() compiled.LinearExpression {
 	idx := system.NbInternalVariables + system.NbPublicVariables + system.NbSecretVariables
 	system.NbInternalVariables++
+	return compiled.LinearExpression{
+		compiled.Pack(idx, compiled.CoeffIdOne, schema.Internal),
+	}
+}
+
+func (system *r1cs) AddInternalVariableWithLazy(lazyCnt int) frontend.Variable {
+	idx := system.NbInternalVariables + system.NbPublicVariables + system.NbSecretVariables + lazyCnt
 	return compiled.LinearExpression{
 		compiled.Pack(idx, compiled.CoeffIdOne, schema.Internal),
 	}
@@ -172,6 +180,46 @@ func (system *r1cs) addConstraint(r1c compiled.R1C, debugID ...int) {
 	if len(debugID) > 0 {
 		system.MDebug[len(system.Constraints)-1] = debugID[0]
 	}
+}
+
+func newLazyMimcEncInputs(_s0, _hh, _v compiled.LinearExpression, loc int) compiled.LazyMimcEncInputs {
+	// s0 := _s0.(compiled.LinearExpression)
+	// hh := _hh.(compiled.LinearExpression)
+
+	return compiled.LazyMimcEncInputs{S0: _s0, HH: _hh, V: _v, Loc: loc}
+}
+
+func newLazyPoseidonEncInputs(s []compiled.LinearExpression, v compiled.LinearExpression, loc int) compiled.LazyPoseidonInputs {
+	// s := state...
+
+	return compiled.LazyPoseidonInputs{S: s, V: v, Loc: loc}
+}
+
+func (system *r1cs) AddLazyMimcEnc(s, h, v frontend.Variable) {
+	s0 := system.toVariable(s)
+	s0 = system.reduce(s0.(compiled.LinearExpression))
+	hh := system.toVariable(h)
+	hh = system.reduce(hh.(compiled.LinearExpression))
+	lazyMimc := newLazyMimcEncInputs(s0.(compiled.LinearExpression), hh.(compiled.LinearExpression),
+		v.(compiled.LinearExpression), len(system.Constraints))
+	system.LazyCons = append(system.LazyCons, &lazyMimc)
+}
+
+// AddLazyPoseidon for Dynamic expanding of poseidon
+func (system *r1cs) AddLazyPoseidon(v frontend.Variable, s ...frontend.Variable) {
+	sLinear, _ := system.toVariables(s...)
+	constantCounts := 0
+	for _, ss := range s {
+		if _, isConstant := system.ConstantValue(ss); isConstant {
+			constantCounts += 1
+		}
+	}
+	// if all poseidon parameters are constant, we should skipped
+	if constantCounts == len(s) {
+		return
+	}
+	lazyPosiedonCons := newLazyPoseidonEncInputs(sLinear, v.(compiled.LinearExpression), len(system.Constraints))
+	system.LazyCons = append(system.LazyCons, &lazyPosiedonCons)
 }
 
 // Term packs a Variable and a coeff in a Term and returns it.
@@ -362,8 +410,12 @@ func (cs *r1cs) Compile() (frontend.CompiledConstraintSystem, error) {
 
 	// setting up the result
 	res := compiled.R1CS{
-		ConstraintSystem: cs.ConstraintSystem,
-		Constraints:      cs.Constraints,
+		ConstraintSystem:       cs.ConstraintSystem,
+		Constraints:            cs.Constraints,
+		LazyCons:               cs.LazyCons,
+		LazyConsMap:            map[int]compiled.LazyIndexedInputs{},
+		LazyConsStaticR1CMap:   map[string][]compiled.R1C{},
+		LazyConsOriginInputMap: map[string]compiled.LazyInputs{},
 	}
 
 	// sanity check
@@ -383,7 +435,7 @@ func (cs *r1cs) Compile() (frontend.CompiledConstraintSystem, error) {
 	case ecc.BLS12_381:
 		return bls12381r1cs.NewR1CS(res, cs.st.Coeffs), nil
 	case ecc.BN254:
-		return bn254r1cs.NewR1CS(res, cs.st.Coeffs), nil
+		return bn254r1cs.NewR1CS(res, cs.st.Coeffs, cs.st), nil
 	case ecc.BW6_761:
 		return bw6761r1cs.NewR1CS(res, cs.st.Coeffs), nil
 	case ecc.BW6_633:

@@ -17,11 +17,15 @@
 package cs
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/consensys/gnark/frontend/cs"
 	"github.com/fxamacker/cbor/v2"
 	"io"
 	"math/big"
+	"os"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -46,13 +50,15 @@ import (
 type R1CS struct {
 	compiled.R1CS
 	Coefficients []fr.Element // R1C coefficients indexes point here
+	CoefT        cs.CoeffTable
 }
 
 // NewR1CS returns a new R1CS and sets cs.Coefficient (fr.Element) from provided big.Int values
-func NewR1CS(cs compiled.R1CS, coefficients []big.Int) *R1CS {
+func NewR1CS(cs compiled.R1CS, coefficients []big.Int, coef_table cs.CoeffTable) *R1CS {
 	r := R1CS{
 		R1CS:         cs,
 		Coefficients: make([]fr.Element, len(coefficients)),
+		CoefT:        coef_table,
 	}
 	for i := 0; i < len(coefficients); i++ {
 		r.Coefficients[i].SetBigInt(&coefficients[i])
@@ -83,7 +89,8 @@ func (cs *R1CS) Solve(witness, a, b, c []fr.Element, opt backend.ProverConfig) (
 	}
 
 	// compute the wires and the a, b, c polynomials
-	if len(a) != len(cs.Constraints) || len(b) != len(cs.Constraints) || len(c) != len(cs.Constraints) {
+	nbCons := len(cs.Constraints) + cs.LazyCons.GetConstraintsAll()
+	if len(a) != nbCons || len(b) != nbCons || len(c) != nbCons {
 		err = errors.New("invalid input size: len(a, b, c) == len(Constraints)")
 		log.Err(err).Send()
 		return solution.values, err
@@ -145,12 +152,12 @@ func (cs *R1CS) parallelSolve(a, b, c []fr.Element, solution *solution) error {
 	// start a worker pool
 	// each worker wait on chTasks
 	// a task is a slice of constraint indexes to be solved
-	for i := 0; i < runtime.NumCPU(); i++ {
+	for worker := 0; worker < runtime.NumCPU(); worker++ {
 		go func() {
 			for t := range chTasks {
 				for _, i := range t {
 					// for each constraint in the task, solve it.
-					if err := cs.solveConstraint(cs.Constraints[i], solution, &a[i], &b[i], &c[i]); err != nil {
+					if err := cs.solveGeneralConstraint(i, solution, &a[i], &b[i], &c[i]); err != nil {
 						var debugInfo *string
 						if dID, ok := cs.MDebug[int(i)]; ok {
 							debugInfo = new(string)
@@ -181,7 +188,7 @@ func (cs *R1CS) parallelSolve(a, b, c []fr.Element, solution *solution) error {
 		if maxCPU <= 1.0 {
 			// we do it sequentially
 			for _, i := range level {
-				if err := cs.solveConstraint(cs.Constraints[i], solution, &a[i], &b[i], &c[i]); err != nil {
+				if err := cs.solveGeneralConstraint(i, solution, &a[i], &b[i], &c[i]); err != nil {
 					var debugInfo *string
 					if dID, ok := cs.MDebug[int(i)]; ok {
 						debugInfo = new(string)
@@ -271,13 +278,152 @@ func (cs *R1CS) divByCoeff(res *fr.Element, t compiled.Term) {
 	}
 }
 
+// solveGeneralConstraint compute unsolved wires in the constraint, if any and set the solution accordingly
+//
+// returns an error if the solver called a hint function that errored
+// returns false, nil if there was no wire to solve
+// returns true, nil if exactly one wire was solved. In that case, it is redundant to check that
+// the constraint is satisfied later.
+// func (cs *R1CS) solveConstraint(r compiled.R1C, solution *solution, a, b, c *fr.Element) error {
+func (cs *R1CS) solveGeneralConstraint(idx int, solution *solution, a, b, c *fr.Element) error {
+	nbCons := len(cs.Constraints)
+	if idx < nbCons {
+		return cs.solveConstraint(idx, solution, a, b, c)
+	}
+
+	i := cs.LazyConsMap[idx].LazyIndex
+	j := cs.LazyConsMap[idx].Index
+
+	cons := cs.LazyCons[i]
+	shift := cons.GetShift(&cs.R1CS, &cs.CoefT)
+
+	return cs.solveLazyConstraint(cons, j, shift, solution, a, b, c)
+}
+
+func (cs *R1CS) solveLazyConstraint(li compiled.LazyInputs, j, shift int, solution *solution, a, b, c *fr.Element) error {
+	r := li.FetchLazy(j, &cs.R1CS, &cs.CoefT)
+	// the index of the non zero entry shows if L, R or O has an uninstantiated wire
+	// the content is the ID of the wire non instantiated
+	var loc uint8
+
+	var termToCompute compiled.Term
+
+	processLExp := func(l compiled.LinearExpression, val *fr.Element, locValue uint8) error {
+		shiftI := shift
+		// s0, s1
+		if li.IsInput(j, locValue) {
+			shiftI = 0
+		}
+		for _, t := range l {
+			vID := t.WireID()
+			// omit constant value
+			if vID != 0 {
+				vID += shiftI
+				t.SetWireID(vID)
+			}
+
+			// wire is already computed, we just accumulate in val
+			if solution.solved[vID] {
+				solution.accumulateInto(t, val)
+				continue
+			}
+
+			// first we check if this is a hint wire
+			if hint, ok := cs.MHints[vID]; ok {
+				if err := solution.solveWithHint(vID, hint); err != nil {
+					return err
+				}
+				// now that the wire is saved, accumulate it into a, b or c
+				solution.accumulateInto(t, val)
+				continue
+			}
+
+			if loc != 0 {
+				panic("found more than one wire to instantiate")
+			}
+			termToCompute = t
+			termToCompute.SetWireID(vID) // TODO
+			loc = locValue
+		}
+		return nil
+	}
+
+	if err := processLExp(r.L, a, 1); err != nil {
+		return err
+	}
+
+	if err := processLExp(r.R, b, 2); err != nil {
+		return err
+	}
+
+	if err := processLExp(r.O, c, 3); err != nil {
+		return err
+	}
+
+	if loc == 0 {
+		// there is nothing to solve, may happen if we have an assertion
+		// (ie a constraints that doesn't yield any output)
+		// or if we solved the unsolved wires with hint functions
+		var check fr.Element
+		if !check.Mul(a, b).Equal(c) {
+			return fmt.Errorf("%s ⋅ %s != %s", a.String(), b.String(), c.String())
+		}
+		return nil
+	}
+
+	// we compute the wire value and instantiate it
+	wID := termToCompute.WireID()
+
+	// solver result
+	var wire fr.Element
+
+	switch loc {
+	case 1:
+		if !b.IsZero() {
+			wire.Div(c, b).
+				Sub(&wire, a)
+			a.Add(a, &wire)
+		} else {
+			// we didn't actually ensure that a * b == c
+			var check fr.Element
+			if !check.Mul(a, b).Equal(c) {
+				return fmt.Errorf("%s ⋅ %s != %s", a.String(), b.String(), c.String())
+			}
+		}
+	case 2:
+		if !a.IsZero() {
+			wire.Div(c, a).
+				Sub(&wire, b)
+			b.Add(b, &wire)
+		} else {
+			var check fr.Element
+			if !check.Mul(a, b).Equal(c) {
+				return fmt.Errorf("%s ⋅ %s != %s", a.String(), b.String(), c.String())
+			}
+		}
+	case 3:
+		wire.Mul(a, b).
+			Sub(&wire, c)
+
+		c.Add(c, &wire)
+	}
+
+	// wire is the term (coeff * value)
+	// but in the solution we want to store the value only
+	// note that in gnark frontend, coeff here is always 1 or -1
+	cs.divByCoeff(&wire, termToCompute)
+	solution.set(wID, wire)
+	return nil
+}
+
 // solveConstraint compute unsolved wires in the constraint, if any and set the solution accordingly
 //
 // returns an error if the solver called a hint function that errored
 // returns false, nil if there was no wire to solve
 // returns true, nil if exactly one wire was solved. In that case, it is redundant to check that
 // the constraint is satisfied later.
-func (cs *R1CS) solveConstraint(r compiled.R1C, solution *solution, a, b, c *fr.Element) error {
+func (cs *R1CS) solveConstraint(i int, solution *solution, a, b, c *fr.Element) error {
+	r := cs.Constraints[i]
 
 	// the index of the non zero entry shows if L, R or O has an uninstantiated wire
 	// the content is the ID of the wire non instantiated
@@ -399,6 +545,52 @@ func (cs *R1CS) GetConstraints() [][]string {
 	return r
 }
 
+func (cs *R1CS) GetLazyConstraints() [][]string {
+	r := make([][]string, 0, len(cs.LazyCons))
+	for _, c := range cs.LazyCons {
+		// for each constraint, we build a string representation of it's L, R and O part
+		// if we are worried about perf for large cs, we could do a string builder + csv format.
+		var line [4]string
+		switch cc := c.(type) {
+		case *compiled.LazyMimcEncInputs:
+			line[0] = cs.vtoString(cc.S0)
+			line[1] = cs.vtoString(cc.HH)
+			line[2] = cs.vtoString(cc.V)
+			line[3] = fmt.Sprintf("@%d, ", cc.Loc)
+		case *compiled.LazyPoseidonInputs:
+			line[0] = ""
+			for i := range cc.S {
+				line[0] = line[0] + cs.vtoString(cc.S[i])
+			}
+			line[1] = cs.vtoString(cc.V)
+			line[2] = ""
+			line[3] = fmt.Sprintf("@%d, ", cc.Loc)
+		}
+		r = append(r, line[:])
+	}
+	return r
+}
+
+func (cs *R1CS) GetStaticR1C() []compiled.R1C {
+	if len(cs.LazyCons) > 0 {
+		return cs.LazyConsStaticR1CMap[cs.LazyCons[0].GetType(&cs.CoefT)]
+	}
+	return []compiled.R1C{}
+}
+
+func (cs *R1CS) GetStaticR1CConstraints() [][]string {
+	cons := cs.GetStaticR1C()
+	r := make([][]string, 0, len(cons))
+	for _, c := range cons {
+		var line [3]string
+		line[0] = cs.vtoString(c.L)
+		line[1] = cs.vtoString(c.R)
+		line[2] = cs.vtoString(c.O)
+		r = append(r, line[:])
+	}
+	return r
+}
+
 func (cs *R1CS) vtoString(l compiled.LinearExpression) string {
 	var sbb strings.Builder
 	for i := 0; i < len(l); i++ {
@@ -457,15 +649,101 @@ func (cs *R1CS) CurveID() ecc.ID {
 	return ecc.BN254
 }
 
+func (cs *R1CS) Lazify() map[int]int {
+	// remove cons generated from Lazy
+	mapFromFull := make(map[int]int)
+	lastEnd := 0
+	offset := 0
+	bar := len(cs.Constraints) - cs.LazyCons.GetConstraintsAll()
+	ret := make([]compiled.R1C, 0)
+
+	lazyIdx := 0
+	for lazyIndex, con := range cs.R1CS.LazyCons {
+		start := con.GetLoc()
+		end := con.GetLoc() + con.GetConstraintsNum()
+		// fmt.Println("in Lazify, idx", lazyIndex, "start", start, "end", end) // TODO
+		if start > lastEnd {
+			ret = append(ret, cs.R1CS.Constraints[lastEnd:start]...)
+		}
+
+		// map [lastend, start)
+		for j := lastEnd; j < start; j++ {
+			mapFromFull[j] = j - offset
+		}
+		lastEnd = end
+		// map [start, end)
+		for j := start; j < end; j++ {
+			mapFromFull[j] = bar + offset + (j - start)
+		}
+
+		// record the index to cons
+		err := con.SetConsStaticR1CMapIfNotExists(&cs.R1CS, &cs.CoefT)
+		if err != nil {
+			panic(err)
+		}
+		for i := 0; i < con.GetConstraintsNum(); i++ {
+			cs.LazyConsMap[bar+lazyIdx] = compiled.LazyIndexedInputs{Index: i, LazyIndex: lazyIndex}
+			lazyIdx++
+		}
+
+		offset += con.GetConstraintsNum()
+	}
+	if lastEnd < len(cs.Constraints) {
+		ret = append(ret, cs.R1CS.Constraints[lastEnd:]...)
+	}
+	// map [end, endCons)
+	nbCons := len(cs.Constraints)
+	for j := lastEnd; j < nbCons; j++ {
+		/// mapFromFull[j+offset] = j
+		mapFromFull[j] = j - offset
+	}
+	cs.R1CS.Constraints = ret
+
+	badCnt := 0
+	for i, row := range cs.Levels {
+		for j, val := range row {
+
+			if v, ok := mapFromFull[val]; ok {
+				cs.Levels[i][j] = v
+			} else {
+				badCnt++
+				panic(fmt.Sprintf("bad map loc at %d, %d", i, j))
+			}
+		}
+	}
+
+	return mapFromFull
+}
+
 // FrSize return fr.Limbs * 8, size in byte of a fr element
 func (cs *R1CS) FrSize() int {
 	return fr.Limbs * 8
 }
 
+// add cbor tags to clarify lazy poseidon inputs
+func (h *R1CS) inputsCBORTags() (cbor.TagSet, error) {
+	defTagOpts := cbor.TagOptions{EncTag: cbor.EncTagRequired, DecTag: cbor.DecTagRequired}
+	tags := cbor.NewTagSet()
+	if err := tags.Add(defTagOpts, reflect.TypeOf(compiled.LazyPoseidonInputs{}), 25448); err != nil {
+		return nil, fmt.Errorf("new LE tag: %w", err)
+	}
+	if err := tags.Add(defTagOpts, reflect.TypeOf(compiled.LazyMimcEncInputs{}), 25449); err != nil {
+		return nil, fmt.Errorf("new LE tag: %w", err)
+	}
+	return tags, nil
+}
+
 // WriteTo encodes R1CS into provided io.Writer using cbor
 func (cs *R1CS) WriteTo(w io.Writer) (int64, error) {
 	_w := ioutils.WriterCounter{W: w} // wraps writer to count the bytes written
-	enc, err := cbor.CoreDetEncOptions().EncMode()
+	tags, err := cs.inputsCBORTags()
+	if err != nil {
+		return 0, fmt.Errorf("cbor tags: %w", err)
+	}
+	enc, err := cbor.CoreDetEncOptions().EncModeWithTags(tags)
+	if err != nil {
+		return 0, err
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -476,12 +754,41 @@ func (cs *R1CS) WriteTo(w io.Writer) (int64, error) {
 	return _w.N, err
 }
 
+func (cs *R1CS) WriteConstraintsTo(w io.Writer) (int64, error) {
+	_w := ioutils.WriterCounter{W: w} // wraps writer to count the bytes written
+	enc, err := cbor.CoreDetEncOptions().EncMode()
+	if err != nil {
+		return 0, err
+	}
+	if err != nil {
+		return 0, err
+	}
+	encoder := enc.NewEncoder(&_w)
+
+	// encode our object
+	err = encoder.Encode(cs.R1CS.Constraints)
+	return _w.N, err
+}
+
+func (cs *R1CS) WriteCTTo(w io.Writer) (int64, error) {
+	bts, err := json.Marshal(cs.CoefT)
+	if err != nil {
+		return 0, err
+	}
+	cnt, err := w.Write(bts)
+	return int64(cnt), err
+}
+
 // ReadFrom attempts to decode R1CS from io.Reader using cbor
 func (cs *R1CS) ReadFrom(r io.Reader) (int64, error) {
+	tags, err := cs.inputsCBORTags()
+	if err != nil {
+		return 0, fmt.Errorf("cbor tags: %w", err)
+	}
 	dm, err := cbor.DecOptions{
-		MaxArrayElements: 134217728,
-		MaxMapPairs:      134217728,
-	}.DecMode()
+		MaxArrayElements: 268435456,
+		MaxMapPairs:      268435456,
+	}.DecModeWithTags(tags)
 
 	if err != nil {
 		return 0, err
@@ -491,5 +798,38 @@ func (cs *R1CS) ReadFrom(r io.Reader) (int64, error) {
 		return int64(decoder.NumBytesRead()), err
 	}
 
+	if _, ok := os.LookupEnv("GNARK_DEBUG_INFO"); !ok {
+		cs.DebugInfo = make([]compiled.LogEntry, 0)
+		cs.MDebug = make(map[int]int, 0)
+	}
 	return int64(decoder.NumBytesRead()), nil
+}
+
+func (cs *R1CS) ReadConstraintsFrom(r io.Reader) (int64, error) {
+	dm, err := cbor.DecOptions{
+		MaxArrayElements: 268435456,
+		MaxMapPairs:      268435456,
+	}.DecMode()
+
+	if err != nil {
+		return 0, err
+	}
+	decoder := dm.NewDecoder(r)
+	if err := decoder.Decode(&cs.R1CS.Constraints); err != nil {
+		return int64(decoder.NumBytesRead()), err
+	}
+
+	return int64(decoder.NumBytesRead()), nil
+}
+
+func (cs *R1CS) ReadCTFrom(r io.Reader) (int64, error) {
+	bts, err := io.ReadAll(r)
+	if err != nil {
+		return 0, err
+	}
+	err = json.Unmarshal(bts, &cs.CoefT)
+	if err != nil {
+		return 0, err
+	}
+	return int64(len(bts)), nil
 }

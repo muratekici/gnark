@@ -22,7 +22,11 @@ import (
 // R1CS decsribes a set of R1C constraint
 type R1CS struct {
 	ConstraintSystem
-	Constraints []R1C
+	Constraints            []R1C
+	LazyCons               LazyR1CS
+	LazyConsMap            map[int]LazyIndexedInputs
+	LazyConsStaticR1CMap   map[string][]R1C
+	LazyConsOriginInputMap map[string]LazyInputs
 }
 
 // GetNbConstraints returns the number of constraints

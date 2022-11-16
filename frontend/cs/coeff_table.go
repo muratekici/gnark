@@ -44,8 +44,9 @@ func (t *CoeffTable) CoeffID(v *big.Int) int {
 
 	// GobEncode is 3x faster than b.Text(16). Slightly slower than Bytes, but Bytes return the same
 	// thing for -x and x .
-	bKey, _ := v.GobEncode()
-	key := string(bKey)
+	// bKey, _ := v.GobEncode()
+	// key := string(bKey)
+	key := v.String()
 
 	// if the coeff is already stored, fetch its ID from the cs.CoeffsIDs map
 	if idx, ok := t.CoeffsIDsLarge[key]; ok {
@@ -59,6 +60,31 @@ func (t *CoeffTable) CoeffID(v *big.Int) int {
 	t.Coeffs = append(t.Coeffs, bCopy)
 	t.CoeffsIDsLarge[key] = resID
 	return resID
+}
+
+func (t *CoeffTable) GetCoeffID(v *big.Int) int {
+	// if the coeff is a int64 we have a fast path.
+	if v.IsInt64() {
+		//return t.coeffID64(v.Int64())
+		if resID, ok := t.CoeffsIDsInt64[v.Int64()]; ok {
+			return resID
+		}
+		return -1
+	}
+
+	key := v.String()
+
+	// if the coeff is already stored, fetch its ID from the cs.CoeffsIDs map
+	if idx, ok := t.CoeffsIDsLarge[key]; ok {
+		return idx
+	}
+
+	// not found
+	return -1
+}
+
+func (t *CoeffTable) GetCoeffsById(id int) *big.Int {
+	return &t.Coeffs[id]
 }
 
 func (t *CoeffTable) coeffID64(v int64) int {

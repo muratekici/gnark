@@ -58,6 +58,7 @@ func newSolution(nbWires int, hintFunctions map[hint.ID]hint.Function, hintsDepe
 	for hintUUID, hintID := range hintsDependencies {
 		if _, ok := s.mHintsFunctions[hintUUID]; !ok {
 			missing = append(missing, hintID)
+			fmt.Println("TODO missing uuid:", hintUUID)
 		}
 	}
 

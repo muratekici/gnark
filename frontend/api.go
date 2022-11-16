@@ -41,6 +41,15 @@ type API interface {
 	// Mul returns res = i1 * i2 * ... in
 	Mul(i1, i2 Variable, in ...Variable) Variable
 
+	// MulModP returns res = i1 * i2 mod i3
+	MulModP(i1, i2, i3 Variable) Variable
+
+	// AddModP returns res = (i1 + i2) mod i3
+	AddModP(i1, i2, i3 Variable) Variable
+
+	// MultiBigMulAndAddGetMod the i1 is the mod, and the in params are the values added
+	MultiBigMulAndAddGetMod(i1 Variable, in ...Variable) Variable
+
 	// DivUnchecked returns i1 / i2 . if i1 == i2 == 0, returns 0
 	DivUnchecked(i1, i2 Variable) Variable
 
@@ -108,6 +117,12 @@ type API interface {
 	// AssertIsLessOrEqual fails if  v > bound
 	AssertIsLessOrEqual(v Variable, bound Variable)
 
+	// AssertIsLess fails if  v >= bound
+	AssertIsLess(v Variable, bound Variable)
+
+	// AssertIsLessOrEqualN fails if  v > bound
+	AssertIsLessOrEqualN(v Variable, bound Variable, n int)
+
 	// Println behaves like fmt.Println but accepts cd.Variable as parameter
 	// whose value will be resolved at runtime when computed by the solver
 	Println(a ...Variable)
@@ -140,4 +155,12 @@ type API interface {
 	// Backend is a shorcut to api.Compiler().Backend()
 	// Deprecated: use api.Compiler().Backend() instead
 	Backend() backend.ID
+
+	// AddInternalVariableWithLazy For Dynamic expanding
+	AddInternalVariableWithLazy(lazyCnt int) Variable
+
+	// AddLazyMimcEnc for Dynamic expanding of mimc enc
+	AddLazyMimcEnc(s, h, v Variable)
+
+	AddLazyPoseidon(v Variable, s ...Variable)
 }

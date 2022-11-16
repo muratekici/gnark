@@ -18,6 +18,7 @@ package test
 
 import (
 	"fmt"
+	"github.com/consensys/gnark/frontend/compiled"
 	"math/big"
 	"path/filepath"
 	"reflect"
@@ -116,6 +117,31 @@ func (e *engine) Neg(i1 frontend.Variable) frontend.Variable {
 	b1.Neg(&b1)
 	b1.Mod(&b1, e.modulus())
 	return b1
+}
+
+func (e *engine) MulModP(i1, i2, i3 frontend.Variable) frontend.Variable {
+	b1, b2, b3 := e.toBigInt(i1), e.toBigInt(i2), e.toBigInt(i3)
+	b1.Mul(&b1, &b2).Mod(&b1, &b3).Mod(&b1, e.modulus())
+	return b1
+}
+
+func (e *engine) AddModP(i1, i2, i3 frontend.Variable) frontend.Variable {
+	b1, b2, b3 := e.toBigInt(i1), e.toBigInt(i2), e.toBigInt(i3)
+	b1.Add(&b1, &b2).Mod(&b1, &b3).Mod(&b1, e.modulus())
+	return b1
+}
+
+func (e *engine) MultiBigMulAndAddGetMod(i1 frontend.Variable, in ...frontend.Variable) frontend.Variable {
+	sum := new(big.Int).SetUint64(0)
+	for i := 0; i < len(in); i += 2 {
+		mul := new(big.Int)
+		b0 := e.toBigInt(in[i])
+		b1 := e.toBigInt(in[i+1])
+		mul.Mul(&b0, &b1)
+		sum.Add(sum, mul)
+	}
+	b2 := e.toBigInt(i1)
+	return sum.Mod(sum, &b2)
 }
 
 func (e *engine) Mul(i1, i2 frontend.Variable, in ...frontend.Variable) frontend.Variable {
@@ -294,17 +320,72 @@ func (e *engine) AssertIsBoolean(i1 frontend.Variable) {
 	e.mustBeBoolean(&b1)
 }
 
-func (e *engine) AssertIsLessOrEqual(v frontend.Variable, bound frontend.Variable) {
+func (e *engine) AssertIsLess(v frontend.Variable, bound frontend.Variable) {
 
 	bValue := e.toBigInt(bound)
+	vValue := e.toBigInt(v)
 
 	if bValue.Sign() == -1 {
-		panic(fmt.Sprintf("[assertIsLessOrEqual] bound (%s) must be positive", bValue.String()))
+		panic(fmt.Sprintf("[AssertIsLessOrEqual] bound (%s) must be positive", bValue.String()))
+	}
+
+	if bValue.BitLen() > 252 {
+		panic(fmt.Sprintf("[AssertIsLessOrEqual] bit lens (%s) must be less than 252", bValue.String()))
+	}
+
+	if vValue.BitLen() > 252 {
+		panic(fmt.Sprintf("[AssertIsLessOrEqual] bit lens (%s) must be less than 252", bValue.String()))
 	}
 
 	b1 := e.toBigInt(v)
 	if b1.Cmp(&bValue) == 1 {
-		panic(fmt.Sprintf("[assertIsLessOrEqual] %s > %s", b1.String(), bValue.String()))
+		panic(fmt.Sprintf("[AssertIsLessOrEqual] %s > %s", b1.String(), bValue.String()))
+	}
+}
+
+func (e *engine) AssertIsLessOrEqual(v frontend.Variable, bound frontend.Variable) {
+
+	bValue := e.toBigInt(bound)
+	vValue := e.toBigInt(v)
+
+	if bValue.Sign() == -1 {
+		panic(fmt.Sprintf("[AssertIsLessOrEqual] bound (%s) must be positive", bValue.String()))
+	}
+
+	if bValue.BitLen() > 252 {
+		panic(fmt.Sprintf("[AssertIsLessOrEqual] bit lens (%s) must be less than 252", bValue.String()))
+	}
+
+	if vValue.BitLen() > 252 {
+		panic(fmt.Sprintf("[AssertIsLessOrEqual] bit lens (%s) must be less than 252", bValue.String()))
+	}
+
+	b1 := e.toBigInt(v)
+	if b1.Cmp(&bValue) == 1 {
+		panic(fmt.Sprintf("[AssertIsLessOrEqual] %s > %s", b1.String(), bValue.String()))
+	}
+}
+
+func (e *engine) AssertIsLessOrEqualN(v frontend.Variable, bound frontend.Variable, n int) {
+
+	bValue := e.toBigInt(bound)
+	vValue := e.toBigInt(v)
+
+	if bValue.Sign() == -1 {
+		panic(fmt.Sprintf("[AssertIsLessOrEqual] bound (%s) must be positive", bValue.String()))
+	}
+
+	if bValue.BitLen() > n-2 {
+		panic(fmt.Sprintf("[AssertIsLessOrEqual] bit lens (%s) must be less than 252", bValue.String()))
+	}
+
+	if vValue.BitLen() > n-2 {
+		panic(fmt.Sprintf("[AssertIsLessOrEqual] bit lens (%s) must be less than 252", bValue.String()))
+	}
+
+	b1 := e.toBigInt(v)
+	if b1.Cmp(&bValue) == 1 {
+		panic(fmt.Sprintf("[AssertIsLessOrEqual] %s > %s", b1.String(), bValue.String()))
 	}
 }
 
@@ -477,4 +558,20 @@ func copyWitness(to, from frontend.Circuit) {
 
 func (e *engine) Compiler() frontend.Compiler {
 	return e
+}
+
+func (e *engine) AddLazyMimcEnc(s, h, v frontend.Variable) {
+	// Not implemented
+}
+
+// AddLazyPoseidon for Dynamic expanding of mimc enc
+func (e *engine) AddLazyPoseidon(v frontend.Variable, s ...frontend.Variable) {
+	// Not implemented
+}
+
+func (e *engine) AddInternalVariableWithLazy(lazyCnt int) frontend.Variable {
+	// Not implemented
+	return compiled.LinearExpression{
+		compiled.Pack(0, compiled.CoeffIdOne, schema.Internal),
+	}
 }

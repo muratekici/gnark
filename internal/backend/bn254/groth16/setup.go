@@ -17,7 +17,9 @@
 package groth16
 
 import (
+	"fmt"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
+	"os"
 
 	curve "github.com/consensys/gnark-crypto/ecc/bn254"
 
@@ -35,6 +37,7 @@ import (
 type ProvingKey struct {
 	// domain
 	Domain fft.Domain
+	Card   uint64
 
 	// [α]1, [β]1, [δ]1
 	// [A(t)]1, [B(t)]1, [Kpk(t)]1, [Z(t)]1
@@ -74,6 +77,576 @@ type VerifyingKey struct {
 
 	// e(α, β)
 	e curve.GT // not serialized
+}
+
+func SetupWithDump(r1cs *cs.R1CS, session string) error { //, pk *ProvingKey, vk *VerifyingKey) error {
+	var pk ProvingKey
+	var vk VerifyingKey
+
+	// get R1CS nb constraints, wires and public/private inputs
+	nbWires := r1cs.NbInternalVariables + r1cs.NbPublicVariables + r1cs.NbSecretVariables
+	nbPublicWires := int(r1cs.NbPublicVariables)
+	nbPrivateWires := r1cs.NbSecretVariables + r1cs.NbInternalVariables
+
+	// Setting group for fft
+	domain := fft.NewDomain(uint64(len(r1cs.Constraints)))
+
+	// samples toxic waste
+	toxicWaste, err := sampleToxicWaste()
+	if err != nil {
+		return err
+	}
+
+	// Setup coeffs to compute pk.G1.A, pk.G1.B, pk.G1.K
+	A, B, C := setupABC(r1cs, domain, toxicWaste)
+
+	// To fill in the Proving and Verifying keys, we need to perform a lot of ecc scalar multiplication (with generator)
+	// and convert the resulting points to affine
+	// this is done using the curve.BatchScalarMultiplicationGX API, which takes as input the base point
+	// (in our case the generator) and the list of scalars, and outputs a list of points (len(points) == len(scalars))
+	// to use this batch call, we need to order our scalars in the same slice
+	// we have 1 batch call for G1 and 1 batch call for G1
+	// scalars are fr.Element in non montgomery form
+	_, _, g1, g2 := curve.Generators()
+
+	// ---------------------------------------------------------------------------------------------
+	// G1 scalars
+
+	// the G1 scalars are ordered (arbitrary) as follow:
+	//
+	// [[α], [β], [δ], [A(i)], [B(i)], [pk.K(i)], [Z(i)], [vk.K(i)]]
+	// len(A) == len(B) == nbWires
+	// len(pk.K) == nbPrivateWires
+	// len(vk.K) == nbPublicWires
+	// len(Z) == domain.Cardinality
+
+	// compute scalars for pkK and vkK
+	pkK := make([]fr.Element, nbPrivateWires)
+	vkK := make([]fr.Element, nbPublicWires)
+
+	var t0, t1 fr.Element
+
+	for i := 0; i < nbPublicWires; i++ {
+		t1.Mul(&A[i], &toxicWaste.beta)
+		t0.Mul(&B[i], &toxicWaste.alpha)
+		t1.Add(&t1, &t0).
+			Add(&t1, &C[i]).
+			Mul(&t1, &toxicWaste.gammaInv)
+		vkK[i] = t1.ToRegular()
+	}
+
+	for i := 0; i < nbPrivateWires; i++ {
+		t1.Mul(&A[i+nbPublicWires], &toxicWaste.beta)
+		t0.Mul(&B[i+nbPublicWires], &toxicWaste.alpha)
+		t1.Add(&t1, &t0).
+			Add(&t1, &C[i+nbPublicWires]).
+			Mul(&t1, &toxicWaste.deltaInv)
+		pkK[i] = t1.ToRegular()
+	}
+
+	// convert A and B to regular form
+	for i := 0; i < nbWires; i++ {
+		A[i].FromMont()
+	}
+	for i := 0; i < nbWires; i++ {
+		B[i].FromMont()
+	}
+
+	// Z part of the proving key (scalars)
+	Z := make([]fr.Element, domain.Cardinality)
+	one := fr.One()
+	var zdt fr.Element
+
+	zdt.Exp(toxicWaste.t, new(big.Int).SetUint64(domain.Cardinality)).
+		Sub(&zdt, &one).
+		Mul(&zdt, &toxicWaste.deltaInv) // sets Zdt to Zdt/delta
+
+	for i := 0; i < int(domain.Cardinality); i++ {
+		Z[i] = zdt.ToRegular()
+		zdt.Mul(&zdt, &toxicWaste.t)
+	}
+
+	// mark points at infinity and filter them
+	pk.InfinityA = make([]bool, len(A))
+	pk.InfinityB = make([]bool, len(B))
+
+	n := 0
+	for i, e := range A {
+		if e.IsZero() {
+			pk.InfinityA[i] = true
+			continue
+		}
+		A[n] = A[i]
+		n++
+	}
+	A = A[:n]
+	pk.NbInfinityA = uint64(nbWires - n)
+	n = 0
+	for i, e := range B {
+		if e.IsZero() {
+			pk.InfinityB[i] = true
+			continue
+		}
+		B[n] = B[i]
+		n++
+	}
+	B = B[:n]
+	pk.NbInfinityB = uint64(nbWires - n)
+
+	// E part
+	{
+		g1Scalars := make([]fr.Element, 0, 3)
+		g1Scalars = append(g1Scalars, toxicWaste.alphaReg, toxicWaste.betaReg, toxicWaste.deltaReg)
+		g1PointsAff := curve.BatchScalarMultiplicationG1(&g1, g1Scalars)
+		// sets pk: [α]1, [β]1, [δ]1
+		pk.G1.Alpha = g1PointsAff[0]
+		pk.G1.Beta = g1PointsAff[1]
+		pk.G1.Delta = g1PointsAff[2]
+
+		g2Scalars := make([]fr.Element, 0, 2)
+		g2Scalars = append(g2Scalars, toxicWaste.betaReg, toxicWaste.deltaReg)
+		g2PointsAff := curve.BatchScalarMultiplicationG2(&g2, g2Scalars)
+		pk.G2.Beta = g2PointsAff[0]
+		pk.G2.Delta = g2PointsAff[1]
+
+		name := fmt.Sprintf("%s.pk.E.save", session)
+		pkFile, err := os.Create(name)
+		if err != nil {
+			return err
+		}
+		cnt, err := pk.WriteRawETo(pkFile)
+		if err != nil {
+			return err
+		}
+		fmt.Println("written ", cnt, "bytes for pk.E.save")
+		// set domain
+		pk.Domain = *domain
+
+		// vk
+		g1Scalars = make([]fr.Element, 0, nbPublicWires)
+		g1Scalars = append(g1Scalars, vkK...)
+		g1PointsAff = curve.BatchScalarMultiplicationG1(&g1, g1Scalars)
+		vk.G1.K = g1PointsAff
+
+		g2Scalars = make([]fr.Element, 0, 2)
+		g2Scalars = append(g2Scalars, toxicWaste.deltaReg, toxicWaste.gammaReg)
+		g2PointsAff = curve.BatchScalarMultiplicationG2(&g2, g2Scalars)
+
+		vk.G2.Delta = g2PointsAff[0]
+		vk.G2.Gamma = g2PointsAff[1]
+		vk.G2.deltaNeg.Neg(&vk.G2.Delta)
+		vk.G2.gammaNeg.Neg(&vk.G2.Gamma)
+
+		// ---------------------------------------------------------------------------------------------
+		// Pairing: vk.e
+		vk.G1.Alpha = pk.G1.Alpha
+		vk.G2.Beta = pk.G2.Beta
+
+		// unused, here for compatibility purposes
+		vk.G1.Beta = pk.G1.Beta
+		vk.G1.Delta = pk.G1.Delta
+
+		vk.e, err = curve.Pair([]curve.G1Affine{pk.G1.Alpha}, []curve.G2Affine{pk.G2.Beta})
+		if err != nil {
+			return err
+		}
+
+		name = fmt.Sprintf("%s.vk.save", session)
+		vkFile, err := os.Create(name)
+		if err != nil {
+			return err
+		}
+		cnt, err = vk.WriteRawTo(vkFile)
+		if err != nil {
+			return err
+		}
+		fmt.Println("written ", cnt, "bytes for vk.save")
+	}
+
+	// A part
+	{
+		var pk ProvingKey
+		g1Scalars := make([]fr.Element, 0, nbWires)
+		g1Scalars = append(g1Scalars, A...)
+		g1PointsAff := curve.BatchScalarMultiplicationG1(&g1, g1Scalars)
+		pk.G1.A = g1PointsAff
+
+		name := fmt.Sprintf("%s.pk.A.save", session)
+		pkFile, err := os.Create(name)
+		if err != nil {
+			return err
+		}
+		cnt, err := pk.WriteRawATo(pkFile)
+		if err != nil {
+			return err
+		}
+		fmt.Println("written ", cnt, "bytes for pk.A.save")
+	}
+
+	// B1 part
+	{
+		var pk ProvingKey
+		g1Scalars := make([]fr.Element, 0, nbWires)
+		g1Scalars = append(g1Scalars, B...)
+		g1PointsAff := curve.BatchScalarMultiplicationG1(&g1, g1Scalars)
+		pk.G1.B = g1PointsAff
+
+		name := fmt.Sprintf("%s.pk.B1.save", session)
+		pkFile, err := os.Create(name)
+		if err != nil {
+			return err
+		}
+		cnt, err := pk.WriteRawB1To(pkFile)
+		if err != nil {
+			return err
+		}
+		fmt.Println("written ", cnt, "bytes for pk.B1.save")
+	}
+
+	// K part
+	{
+		var pk ProvingKey
+		g1Scalars := make([]fr.Element, 0, nbPrivateWires)
+		g1Scalars = append(g1Scalars, pkK...)
+		g1PointsAff := curve.BatchScalarMultiplicationG1(&g1, g1Scalars)
+		pk.G1.K = g1PointsAff
+
+		name := fmt.Sprintf("%s.pk.K.save", session)
+		pkFile, err := os.Create(name)
+		if err != nil {
+			return err
+		}
+		cnt, err := pk.WriteRawKTo(pkFile)
+		if err != nil {
+			return err
+		}
+		fmt.Println("written ", cnt, "bytes for pk.K.save")
+	}
+
+	// Z part
+	{
+		var pk ProvingKey
+		g1Scalars := make([]fr.Element, 0, int(domain.Cardinality))
+		g1Scalars = append(g1Scalars, Z...)
+		g1PointsAff := curve.BatchScalarMultiplicationG1(&g1, g1Scalars)
+		pk.G1.Z = g1PointsAff
+		bitReverse(pk.G1.Z)
+
+		name := fmt.Sprintf("%s.pk.Z.save", session)
+		pkFile, err := os.Create(name)
+		if err != nil {
+			return err
+		}
+		cnt, err := pk.WriteRawZTo(pkFile)
+		if err != nil {
+			return err
+		}
+		fmt.Println("written ", cnt, "bytes for pk.Z.save")
+	}
+
+	// B2 part
+	{
+		var pk ProvingKey
+		g2Scalars := make([]fr.Element, 0, nbWires)
+		g2Scalars = append(g2Scalars, B...)
+		g2PointsAff := curve.BatchScalarMultiplicationG2(&g2, g2Scalars)
+		pk.G2.B = g2PointsAff
+
+		name := fmt.Sprintf("%s.pk.B2.save", session)
+		pkFile, err := os.Create(name)
+		if err != nil {
+			return err
+		}
+		cnt, err := pk.WriteRawB2To(pkFile)
+		if err != nil {
+			return err
+		}
+		fmt.Println("written ", cnt, "bytes for pk.B2.save")
+	}
+
+	return nil
+}
+
+func SetupLazyWithDump(r1cs *cs.R1CS, session string) error {
+	var pk ProvingKey
+	var vk VerifyingKey
+
+	// get R1CS nb constraints, wires and public/private inputs
+	nbWires := r1cs.NbInternalVariables + r1cs.NbPublicVariables + r1cs.NbSecretVariables
+	nbPublicWires := int(r1cs.NbPublicVariables)
+	nbPrivateWires := r1cs.NbSecretVariables + r1cs.NbInternalVariables
+
+	// Setting group for fft
+	domain := fft.NewDomain(uint64(len(r1cs.Constraints) + r1cs.LazyCons.GetConstraintsAll()))
+
+	// samples toxic waste
+	toxicWaste, err := sampleToxicWaste()
+	if err != nil {
+		return err
+	}
+
+	// Setup coeffs to compute pk.G1.A, pk.G1.B, pk.G1.K
+	A, B, C := setupLazyABC(r1cs, domain, toxicWaste)
+
+	// To fill in the Proving and Verifying keys, we need to perform a lot of ecc scalar multiplication (with generator)
+	// and convert the resulting points to affine
+	// this is done using the curve.BatchScalarMultiplicationGX API, which takes as input the base point
+	// (in our case the generator) and the list of scalars, and outputs a list of points (len(points) == len(scalars))
+	// to use this batch call, we need to order our scalars in the same slice
+	// we have 1 batch call for G1 and 1 batch call for G1
+	// scalars are fr.Element in non montgomery form
+	_, _, g1, g2 := curve.Generators()
+
+	// ---------------------------------------------------------------------------------------------
+	// G1 scalars
+
+	// the G1 scalars are ordered (arbitrary) as follow:
+	//
+	// [[α], [β], [δ], [A(i)], [B(i)], [pk.K(i)], [Z(i)], [vk.K(i)]]
+	// len(A) == len(B) == nbWires
+	// len(pk.K) == nbPrivateWires
+	// len(vk.K) == nbPublicWires
+	// len(Z) == domain.Cardinality
+
+	// compute scalars for pkK and vkK
+	pkK := make([]fr.Element, nbPrivateWires)
+	vkK := make([]fr.Element, nbPublicWires)
+
+	var t0, t1 fr.Element
+
+	for i := 0; i < nbPublicWires; i++ {
+		t1.Mul(&A[i], &toxicWaste.beta)
+		t0.Mul(&B[i], &toxicWaste.alpha)
+		t1.Add(&t1, &t0).
+			Add(&t1, &C[i]).
+			Mul(&t1, &toxicWaste.gammaInv)
+		vkK[i] = t1.ToRegular()
+	}
+
+	for i := 0; i < nbPrivateWires; i++ {
+		t1.Mul(&A[i+nbPublicWires], &toxicWaste.beta)
+		t0.Mul(&B[i+nbPublicWires], &toxicWaste.alpha)
+		t1.Add(&t1, &t0).
+			Add(&t1, &C[i+nbPublicWires]).
+			Mul(&t1, &toxicWaste.deltaInv)
+		pkK[i] = t1.ToRegular()
+	}
+
+	// convert A and B to regular form
+	for i := 0; i < nbWires; i++ {
+		A[i].FromMont()
+	}
+	for i := 0; i < nbWires; i++ {
+		B[i].FromMont()
+	}
+
+	// Z part of the proving key (scalars)
+	Z := make([]fr.Element, domain.Cardinality)
+	one := fr.One()
+	var zdt fr.Element
+
+	zdt.Exp(toxicWaste.t, new(big.Int).SetUint64(domain.Cardinality)).
+		Sub(&zdt, &one).
+		Mul(&zdt, &toxicWaste.deltaInv) // sets Zdt to Zdt/delta
+
+	for i := 0; i < int(domain.Cardinality); i++ {
+		Z[i] = zdt.ToRegular()
+		zdt.Mul(&zdt, &toxicWaste.t)
+	}
+
+	// mark points at infinity and filter them
+	pk.InfinityA = make([]bool, len(A))
+	pk.InfinityB = make([]bool, len(B))
+
+	n := 0
+	for i, e := range A {
+		if e.IsZero() {
+			pk.InfinityA[i] = true
+			continue
+		}
+		A[n] = A[i]
+		n++
+	}
+	A = A[:n]
+	pk.NbInfinityA = uint64(nbWires - n)
+	n = 0
+	for i, e := range B {
+		if e.IsZero() {
+			pk.InfinityB[i] = true
+			continue
+		}
+		B[n] = B[i]
+		n++
+	}
+	B = B[:n]
+	pk.NbInfinityB = uint64(nbWires - n)
+
+	// set domain
+	pk.Domain = *domain
+
+	// E part and VK
+	{
+		g1Scalars := make([]fr.Element, 0, 3)
+		g1Scalars = append(g1Scalars, toxicWaste.alphaReg, toxicWaste.betaReg, toxicWaste.deltaReg)
+		g1PointsAff := curve.BatchScalarMultiplicationG1(&g1, g1Scalars)
+		// sets pk: [α]1, [β]1, [δ]1
+		pk.G1.Alpha = g1PointsAff[0]
+		pk.G1.Beta = g1PointsAff[1]
+		pk.G1.Delta = g1PointsAff[2]
+
+		g2Scalars := make([]fr.Element, 0, 2)
+		g2Scalars = append(g2Scalars, toxicWaste.betaReg, toxicWaste.deltaReg)
+		g2PointsAff := curve.BatchScalarMultiplicationG2(&g2, g2Scalars)
+		pk.G2.Beta = g2PointsAff[0]
+		pk.G2.Delta = g2PointsAff[1]
+
+		name := fmt.Sprintf("%s.pk.E.save", session)
+		pkFile, err := os.Create(name)
+		if err != nil {
+			return err
+		}
+		_, err = pk.WriteRawETo(pkFile)
+		if err != nil {
+			return err
+		}
+
+		// vk
+		g1Scalars = make([]fr.Element, 0, nbPublicWires)
+		g1Scalars = append(g1Scalars, vkK...)
+		g1PointsAff = curve.BatchScalarMultiplicationG1(&g1, g1Scalars)
+		vk.G1.K = g1PointsAff
+
+		g2Scalars = make([]fr.Element, 0, 2)
+		g2Scalars = append(g2Scalars, toxicWaste.deltaReg, toxicWaste.gammaReg)
+		g2PointsAff = curve.BatchScalarMultiplicationG2(&g2, g2Scalars)
+
+		vk.G2.Delta = g2PointsAff[0]
+		vk.G2.Gamma = g2PointsAff[1]
+		vk.G2.deltaNeg.Neg(&vk.G2.Delta)
+		vk.G2.gammaNeg.Neg(&vk.G2.Gamma)
+
+		// ---------------------------------------------------------------------------------------------
+		// Pairing: vk.e
+		vk.G1.Alpha = pk.G1.Alpha
+		vk.G2.Beta = pk.G2.Beta
+
+		// unused, here for compatibility purposes
+		vk.G1.Beta = pk.G1.Beta
+		vk.G1.Delta = pk.G1.Delta
+
+		vk.e, err = curve.Pair([]curve.G1Affine{pk.G1.Alpha}, []curve.G2Affine{pk.G2.Beta})
+		if err != nil {
+			return err
+		}
+
+		name = fmt.Sprintf("%s.vk.save", session)
+		vkFile, err := os.Create(name)
+		if err != nil {
+			return err
+		}
+		_, err = vk.WriteRawTo(vkFile)
+		if err != nil {
+			return err
+		}
+	}
+
+	// A part
+	{
+		var pk ProvingKey
+		g1Scalars := make([]fr.Element, 0, nbWires)
+		g1Scalars = append(g1Scalars, A...)
+		g1PointsAff := curve.BatchScalarMultiplicationG1(&g1, g1Scalars)
+		pk.G1.A = g1PointsAff
+
+		name := fmt.Sprintf("%s.pk.A.save", session)
+		pkFile, err := os.Create(name)
+		if err != nil {
+			return err
+		}
+		_, err = pk.WriteRawATo(pkFile)
+		if err != nil {
+			return err
+		}
+	}
+
+	// B1 part
+	{
+		var pk ProvingKey
+		g1Scalars := make([]fr.Element, 0, nbWires)
+		g1Scalars = append(g1Scalars, B...)
+		g1PointsAff := curve.BatchScalarMultiplicationG1(&g1, g1Scalars)
+		pk.G1.B = g1PointsAff
+
+		name := fmt.Sprintf("%s.pk.B1.save", session)
+		pkFile, err := os.Create(name)
+		if err != nil {
+			return err
+		}
+		_, err = pk.WriteRawB1To(pkFile)
+		if err != nil {
+			return err
+		}
+	}
+
+	// K part
+	{
+		var pk ProvingKey
+		g1Scalars := make([]fr.Element, 0, nbPrivateWires)
+		g1Scalars = append(g1Scalars, pkK...)
+		g1PointsAff := curve.BatchScalarMultiplicationG1(&g1, g1Scalars)
+		pk.G1.K = g1PointsAff
+
+		name := fmt.Sprintf("%s.pk.K.save", session)
+		pkFile, err := os.Create(name)
+		if err != nil {
+			return err
+		}
+		_, err = pk.WriteRawKTo(pkFile)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Z part
+	{
+		var pk ProvingKey
+		g1Scalars := make([]fr.Element, 0, int(domain.Cardinality))
+		g1Scalars = append(g1Scalars, Z...)
+		g1PointsAff := curve.BatchScalarMultiplicationG1(&g1, g1Scalars)
+		pk.G1.Z = g1PointsAff
+		bitReverse(pk.G1.Z)
+
+		name := fmt.Sprintf("%s.pk.Z.save", session)
+		pkFile, err := os.Create(name)
+		if err != nil {
+			return err
+		}
+		_, err = pk.WriteRawZTo(pkFile)
+		if err != nil {
+			return err
+		}
+	}
+
+	// B2 part
+	{
+		var pk ProvingKey
+		g2Scalars := make([]fr.Element, 0, nbWires)
+		g2Scalars = append(g2Scalars, B...)
+		g2PointsAff := curve.BatchScalarMultiplicationG2(&g2, g2Scalars)
+		pk.G2.B = g2PointsAff
+
+		name := fmt.Sprintf("%s.pk.B2.save", session)
+		pkFile, err := os.Create(name)
+		if err != nil {
+			return err
+		}
+		_, err = pk.WriteRawB2To(pkFile)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Setup constructs the SRS
@@ -349,6 +922,124 @@ func setupABC(r1cs *cs.R1CS, domain *fft.Domain, toxicWaste toxicWaste) (A []fr.
 		L.Mul(&L, &w)
 		L.Mul(&L, &t[i])
 		L.Mul(&L, &tInv[i+1])
+	}
+	return
+
+}
+
+func setupLazyABC(r1cs *cs.R1CS, domain *fft.Domain, toxicWaste toxicWaste) (A []fr.Element, B []fr.Element, C []fr.Element) {
+
+	nbWires := r1cs.NbInternalVariables + r1cs.NbPublicVariables + r1cs.NbSecretVariables
+
+	A = make([]fr.Element, nbWires)
+	B = make([]fr.Element, nbWires)
+	C = make([]fr.Element, nbWires)
+
+	one := fr.One()
+
+	// first we compute [t-w^i] and its inverse
+	var w fr.Element
+	w.Set(&domain.Generator)
+	wi := fr.One()
+	t := make([]fr.Element, len(r1cs.Constraints)+r1cs.LazyCons.GetConstraintsAll()+1)
+	for i := 0; i < len(t); i++ {
+		t[i].Sub(&toxicWaste.t, &wi)
+		wi.Mul(&wi, &w) // TODO this is already pre computed in fft.Domain
+	}
+	tInv := fr.BatchInvert(t)
+
+	// evaluation of the i-th lagrange polynomial at t
+	var L fr.Element
+
+	// L = 1/n*(t^n-1)/(t-1), Li+1 = w*Li*(t-w^i)/(t-w^(i+1))
+
+	// Setting L0
+	L.Exp(toxicWaste.t, new(big.Int).SetUint64(domain.Cardinality)).
+		Sub(&L, &one)
+	L.Mul(&L, &tInv[0]).
+		Mul(&L, &domain.CardinalityInv)
+
+	accumulate := func(res *fr.Element, t compiled.Term, value *fr.Element) {
+		cID := t.CoeffID()
+		switch cID {
+		case compiled.CoeffIdZero:
+			return
+		case compiled.CoeffIdOne:
+			res.Add(res, value)
+		case compiled.CoeffIdMinusOne:
+			res.Sub(res, value)
+		case compiled.CoeffIdTwo:
+			var buffer fr.Element
+			buffer.Double(value)
+			res.Add(res, &buffer)
+		default:
+			var buffer fr.Element
+			buffer.Mul(&r1cs.Coefficients[cID], value)
+			res.Add(res, &buffer)
+		}
+	}
+
+	getWid := func(t compiled.Term, li compiled.LazyInputs, shift, j, loc int) int {
+		shiftI := shift
+		if li.IsInput(j, uint8(loc)) {
+			shiftI = 0
+		}
+		wID := t.WireID()
+		if wID != 0 {
+			wID += shiftI
+		}
+		return wID
+	}
+	// each constraint is in the form
+	// L * R == O
+	// L, R and O being linear expressions
+	// for each term appearing in the linear expression,
+	// we compute term.Coefficient * L, and cumulate it in
+	// A, B or C at the indice of the variable
+	for i, c := range r1cs.Constraints {
+
+		for _, t := range c.L {
+			accumulate(&A[t.WireID()], t, &L)
+		}
+		for _, t := range c.R {
+			accumulate(&B[t.WireID()], t, &L)
+		}
+		for _, t := range c.O {
+			accumulate(&C[t.WireID()], t, &L)
+		}
+
+		// Li+1 = w*Li*(t-w^i)/(t-w^(i+1))
+		L.Mul(&L, &w)
+		L.Mul(&L, &t[i])
+		L.Mul(&L, &tInv[i+1])
+	}
+	idx := len(r1cs.Constraints)
+	for _, li := range r1cs.LazyCons {
+		numJ := li.GetConstraintsNum()
+		shift := li.GetShift(&r1cs.R1CS, &r1cs.CoefT)
+		for j := 0; j < numJ; j++ {
+			row := li.FetchLazy(j, &r1cs.R1CS, &r1cs.CoefT)
+
+			for _, t := range row.L {
+				wID := getWid(t, li, shift, j, 1)
+				accumulate(&A[wID], t, &L)
+			}
+			for _, t := range row.R {
+				wID := getWid(t, li, shift, j, 2)
+				accumulate(&B[wID], t, &L)
+			}
+			for _, t := range row.O {
+				wID := getWid(t, li, shift, j, 3)
+				accumulate(&C[wID], t, &L)
+			}
+
+			// Li+1 = w*Li*(t-w^i)/(t-w^(i+1))
+			L.Mul(&L, &w)
+			L.Mul(&L, &t[idx])
+			L.Mul(&L, &tInv[idx+1])
+
+			idx++
+		}
 	}
 	return
 
