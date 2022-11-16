@@ -20,6 +20,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/witness"
+	"github.com/consensys/gnark/frontend/compiled"
 	"github.com/consensys/gnark/frontend/schema"
 )
 
@@ -39,6 +40,9 @@ type CompiledConstraintSystem interface {
 
 	CurveID() ecc.ID
 	FrSize() int
+
+	// GetCounters return the collected constraint counters, if any
+	GetCounters() []compiled.Counter
 
 	GetSchema() *schema.Schema
 

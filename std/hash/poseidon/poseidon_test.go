@@ -1,4 +1,4 @@
-package poseidon_bak
+package poseidon
 
 import (
 	"math/big"

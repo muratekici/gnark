@@ -1,7 +1,6 @@
 package std
 
 import (
-	"github.com/consensys/gnark/std/math/mod"
 	"sync"
 
 	"github.com/consensys/gnark/backend/hint"
@@ -28,5 +27,4 @@ func registerHints() {
 	hint.Register(bits.NNAF)
 	hint.Register(bits.IthBit)
 	hint.Register(bits.NBits)
-	hint.Register(mod.BigMulModP)
 }

@@ -86,7 +86,6 @@ func seedFiller(w frontend.Circuit, curve ecc.ID) {
 	mrand.Seed(time.Now().Unix())
 
 	m := curve.Info().Fr.Modulus()
-	m = m.Div(m, new(big.Int).SetInt64(8))
 
 	fill(w, func() interface{} {
 		i := int(mrand.Uint32() % uint32(len(seedCorpus))) //#nosec G404 weak rng is fine here
@@ -101,12 +100,11 @@ func randomFiller(w frontend.Circuit, curve ecc.ID) {
 
 	r := mrand.New(mrand.NewSource(time.Now().Unix())) //#nosec G404 weak rng is fine here
 	m := curve.Info().Fr.Modulus()
-	m = m.Div(m, new(big.Int).SetInt64(8))
 
 	fill(w, func() interface{} {
 		i := int(mrand.Uint32() % uint32(len(seedCorpus)*2)) //#nosec G404 weak rng is fine here
 		if i >= len(seedCorpus) {
-			b1, _ := rand.Int(r, m) //#nosec G404 weak rng is fine here
+			b1, _ := rand.Int(r, m)
 			return b1
 		}
 		r := new(big.Int).Set(seedCorpus[i])

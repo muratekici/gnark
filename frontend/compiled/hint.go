@@ -74,11 +74,7 @@ func (h *Hint) UnmarshalCBOR(b []byte) error {
 	if err != nil {
 		return fmt.Errorf("cbor tags: %w", err)
 	}
-	// dec, err := cbor.DecOptions{}.DecModeWithTags(tags)
-	dec, err := cbor.DecOptions{
-		MaxArrayElements: 268435456, // 134217728,
-		MaxMapPairs:      268435456, // 134217728,
-	}.DecModeWithTags(tags)
+	dec, err := cbor.DecOptions{}.DecModeWithTags(tags)
 	if err != nil {
 		return fmt.Errorf("decoder: %w", err)
 	}
