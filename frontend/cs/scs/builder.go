@@ -99,15 +99,12 @@ func newBuilder(field *big.Int, config frontend.CompileConfig) *scs {
 		panic("invalid modulus on cs impl") // sanity check
 	}
 
-	return &builder
-}
+	system.Public = make([]string, 0)
+	system.Secret = make([]string, 0)
 
-func (builder *scs) Field() *big.Int {
-	return builder.cs.Field()
-}
+	system.CurveID = curveID
 
-func (builder *scs) FieldBitLen() int {
-	return builder.cs.FieldBitLen()
+	return &system
 }
 
 // addPlonkConstraint creates a constraint of the for al+br+clr+k=0

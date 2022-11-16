@@ -21,5 +21,6 @@ func InvZero(q *big.Int, inputs []*big.Int, results []*big.Int) error {
 	}
 
 	result.ModInverse(result, q)
+
 	return nil
 }

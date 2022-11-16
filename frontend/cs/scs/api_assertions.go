@@ -91,7 +91,7 @@ func (builder *scs) AssertIsBoolean(i1 frontend.Variable) {
 }
 
 // AssertIsLessOrEqual fails if  v > bound
-func (builder *scs) AssertIsLessOrEqual(v frontend.Variable, bound frontend.Variable) {
+func (system *scs) AssertIsLessOrEqual(v frontend.Variable, bound frontend.Variable) {
 	switch b := bound.(type) {
 	case expr.TermToRefactor:
 		builder.mustBeLessOrEqVar(v.(expr.TermToRefactor), b)

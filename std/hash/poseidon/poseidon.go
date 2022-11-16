@@ -1,9 +1,10 @@
 package poseidon
 
 import (
-	"github.com/consensys/gnark/std/hash/poseidon/constants"
-
+	"github.com/consensys/gnark/backend/hint"
 	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/frontend/compiled"
+	"github.com/consensys/gnark/std/hash/poseidon/constants"
 )
 
 // power 5 as s-box
@@ -73,36 +74,42 @@ func permutation(api frontend.API, state []frontend.Variable) []frontend.Variabl
 	return state
 }
 
-func Poseidon(api frontend.API, input ...frontend.Variable) frontend.Variable {
-	inputLength := len(input)
-	// No support for hashing inputs of length less than 2
-	if inputLength < 2 {
-		panic("Not supported input size")
-	}
-
-	const maxLength = 12
-	state := make([]frontend.Variable, maxLength+1)
-	state[0] = frontend.Variable(0)
-	startIndex := 0
-	lastIndex := 0
-
-	// Make a hash chain of the input if its length > maxLength
-	if inputLength > maxLength {
-		count := inputLength / maxLength
-		for i := 0; i < count; i++ {
-			lastIndex = (i + 1) * maxLength
-			copy(state[1:], input[startIndex:lastIndex])
-			state = permutation(api, state)
-			startIndex = lastIndex
+func preHandleData(api frontend.API, data ...frontend.Variable) []frontend.Variable {
+	// if all constants, skipped
+	constantCount := 0
+	for i := range data {
+		if _, isConstant := api.Compiler().ConstantValue(data[i]); isConstant {
+			constantCount++
 		}
 	}
-
-	// For the remaining part of the input OR if 2 <= inputLength <= 12
-	if lastIndex < inputLength {
-		lastIndex = inputLength
-		remainigLength := lastIndex - startIndex
-		copy(state[1:], input[startIndex:lastIndex])
-		state = permutation(api, state[:remainigLength+1])
+	if constantCount == len(data) {
+		return data
 	}
+
+	// get the self variables by hint, and make sure it is equal to data[i]
+	for i := range data {
+		self, err := api.Compiler().NewHint(hint.Self, 1, data[i])
+		if err != nil {
+			panic(err)
+		}
+		api.AssertIsEqual(self[0], data[i])
+		data[i] = self[0]
+	}
+	return data
+}
+
+func Poseidon(api frontend.API, data ...frontend.Variable) frontend.Variable {
+	data = preHandleData(api, data...)
+	// we record 2 params first, then lets see if we can record multi params and solve
+	t := len(data) + 1
+	if t < 3 || t > 13 {
+		panic("Not supported input size")
+	}
+	vInternal := api.AddInternalVariableWithLazy(compiled.GetConstraintsNum(data, api))
+	api.AddLazyPoseidon(vInternal, data...)
+	state := make([]frontend.Variable, t)
+	state[0] = frontend.Variable(0)
+	copy(state[1:], data)
+	state = permutation(api, state)
 	return state[0]
 }

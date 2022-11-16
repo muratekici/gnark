@@ -19,6 +19,7 @@ package r1cs
 import (
 	"errors"
 	"fmt"
+	"github.com/consensys/gnark/std/math/mod"
 	"math/big"
 	"path/filepath"
 	"reflect"

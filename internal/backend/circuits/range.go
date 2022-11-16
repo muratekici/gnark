@@ -2,6 +2,7 @@ package circuits
 
 import (
 	"github.com/consensys/gnark"
+	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
 )
 
@@ -38,12 +39,10 @@ type rangeCheckCircuit struct {
 	Y, Bound frontend.Variable `gnark:",public"`
 }
 
+// Define in order to avoid overflow, we refactor the range check
 func (circuit *rangeCheckCircuit) Define(api frontend.API) error {
-	c1 := api.Mul(circuit.X, circuit.Y)
-	c2 := api.Mul(c1, circuit.Y)
-	c3 := api.Add(circuit.X, circuit.Y)
-	api.AssertIsLessOrEqual(c2, circuit.Bound)
-	api.AssertIsLessOrEqual(c3, circuit.Bound) // c3 is from a linear expression only
+	api.AssertIsLessOrEqual(circuit.X, circuit.Bound)
+	api.AssertIsLessOrEqual(circuit.Y, circuit.Bound)
 
 	return nil
 }
@@ -60,7 +59,7 @@ func rangeCheck() {
 	bad.Y = (4)
 	bad.Bound = (bound)
 
-	addEntry("range", &circuit, &good, &bad, gnark.Curves())
+	addEntry("range", &circuit, &good, &bad, []ecc.ID{ecc.BN254})
 }
 
 func init() {

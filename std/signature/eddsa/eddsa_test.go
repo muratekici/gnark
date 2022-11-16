@@ -52,7 +52,9 @@ func (circuit *eddsaCircuit) Define(api frontend.API) error {
 	}
 
 	// verify the signature in the cs
-	return Verify(curve, circuit.Signature, circuit.Message, circuit.PublicKey, &mimc)
+	var batchStores = &BatchStores{Sigs: make([]Signature, 0), Msgs: make([]frontend.Variable, 0), Pubkeys: make([]PublicKey, 0)}
+	Verify(batchStores, curve, circuit.Signature, circuit.Message, circuit.PublicKey, 1, &mimc)
+	return Flush(batchStores, curve, &mimc)
 }
 
 func TestEddsa(t *testing.T) {

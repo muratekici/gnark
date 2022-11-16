@@ -22,6 +22,7 @@ import (
 	"github.com/consensys/gnark/std/accumulator/merkle"
 	"github.com/consensys/gnark/std/algebra/twistededwards"
 	"github.com/consensys/gnark/std/hash/mimc"
+	"github.com/consensys/gnark/std/hash/poseidon"
 	"github.com/consensys/gnark/std/signature/eddsa"
 )
 
@@ -165,6 +166,9 @@ func (circuit *Circuit) Define(api frontend.API) error {
 			return err
 		}
 
+		p := poseidon.Poseidon(api, circuit.Transfers[i].Nonce, circuit.Transfers[i].Amount)
+		poseidon.Poseidon(api, p, circuit.Transfers[i].Amount)
+
 		// update the accounts
 		verifyAccountUpdated(api, circuit.SenderAccountsBefore[i], circuit.ReceiverAccountsBefore[i], circuit.SenderAccountsAfter[i], circuit.ReceiverAccountsAfter[i], circuit.Transfers[i].Amount)
 	}
@@ -186,9 +190,16 @@ func verifyTransferSignature(api frontend.API, t TransferConstraints, hFunc mimc
 	if err != nil {
 		return err
 	}
-
 	hFunc.Reset()
-	err = eddsa.Verify(curve, t.Signature, htransfer, t.SenderPubKey, &hFunc)
+
+	var batchStores = eddsa.CreateBatchStores()
+	_ = eddsa.Verify(batchStores, curve, t.Signature, htransfer, t.SenderPubKey, 1, &hFunc)
+	_ = eddsa.Verify(batchStores, curve, t.Signature, htransfer, t.SenderPubKey, 1, &hFunc)
+	_ = eddsa.Verify(batchStores, curve, t.Signature, htransfer, t.SenderPubKey, 0, &hFunc)
+	_ = eddsa.Verify(batchStores, curve, t.Signature, htransfer, t.SenderPubKey, 0, &hFunc)
+
+	err = eddsa.Flush(batchStores, curve, &hFunc)
+
 	if err != nil {
 		return err
 	}

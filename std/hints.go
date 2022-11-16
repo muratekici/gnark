@@ -1,6 +1,7 @@
 package std
 
 import (
+	"github.com/consensys/gnark/std/math/mod"
 	"sync"
 
 	"github.com/consensys/gnark/backend/hint"

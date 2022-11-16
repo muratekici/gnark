@@ -20,7 +20,9 @@
 package groth16
 
 import (
+	"fmt"
 	"io"
+	"os"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
@@ -222,6 +224,95 @@ func Prove(r1cs constraint.ConstraintSystem, pk ProvingKey, fullWitness witness.
 	}
 }
 
+func LazifyR1cs(r1cs frontend.CompiledConstraintSystem) {
+	switch _r1cs := r1cs.(type) {
+	case *backend_bn254.R1CS:
+		_r1cs.Lazify()
+	default:
+		panic("unrecognized R1CS curve type")
+	}
+}
+
+func ReadSegmentProveKey(filepath string) (pks []ProvingKey, err error) {
+	pks = make([]ProvingKey, 2)
+	// pkE
+	pks[0] = NewProvingKey(ecc.BN254)
+	// pkB2
+	pks[1] = NewProvingKey(ecc.BN254)
+
+	f0, _ := os.Open(filepath + ".pk.E.save")
+	_, err = pks[0].(*groth16_bn254.ProvingKey).UnsafeReadEFrom(f0)
+	if err != nil {
+		return pks, fmt.Errorf("read file error")
+	}
+	err = f0.Close()
+	if err != nil {
+		return pks, err
+	}
+
+	f1, _ := os.Open(filepath + ".pk.B2.save")
+	_, err = pks[1].(*groth16_bn254.ProvingKey).UnsafeReadB2From(f1)
+	if err != nil {
+		return pks, fmt.Errorf("read file error")
+	}
+	err = f1.Close()
+	if err != nil {
+		return pks, err
+	}
+
+	return pks, nil
+}
+
+func LoadR1CSFromFile(filepath string) (r1cs frontend.CompiledConstraintSystem, err error) {
+	cccs := &backend_bn254.R1CS{}
+	ccsFile, err := os.Open(fmt.Sprintf("%s.ccs.save", filepath))
+	if err != nil {
+		return r1cs, err
+	}
+	_, err = cccs.ReadFrom(ccsFile)
+	if err != nil {
+		return r1cs, err
+	}
+	err = ccsFile.Close()
+	if err != nil {
+		return r1cs, err
+	}
+
+	ctFile, err := os.Open(fmt.Sprintf("%s.ccs.ct.save", filepath))
+	if err != nil {
+		return r1cs, err
+	}
+	_, err = cccs.ReadCTFrom(ctFile)
+	if err != nil {
+		return r1cs, err
+	}
+	err = ctFile.Close()
+	if err != nil {
+		return r1cs, err
+	}
+	return cccs, nil
+}
+
+func ProveRoll(r1cs frontend.CompiledConstraintSystem, pkE, pkB2 ProvingKey, fullWitness *witness.Witness, session string, opts ...backend.ProverOption) (Proof, error) {
+
+	// apply options
+	opt, err := backend.NewProverConfig(opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	switch _r1cs := r1cs.(type) {
+	case *backend_bn254.R1CS:
+		w, ok := fullWitness.Vector.(*witness_bn254.Witness)
+		if !ok {
+			return nil, witness.ErrInvalidWitness
+		}
+		return groth16_bn254.ProveRoll(_r1cs, pkE.(*groth16_bn254.ProvingKey), pkB2.(*groth16_bn254.ProvingKey), *w, opt, session)
+	default:
+		panic("unrecognized R1CS curve type")
+	}
+}
+
 // Setup runs groth16.Setup with provided R1CS and outputs a key pair associated with the circuit.
 //
 // Note that careful consideration must be given to this step in production environment.
@@ -282,6 +373,33 @@ func Setup(r1cs constraint.ConstraintSystem) (ProvingKey, VerifyingKey, error) {
 			return nil, nil, err
 		}
 		return &pk, &vk, nil
+	default:
+		panic("unrecognized R1CS curve type")
+	}
+}
+
+func SetupWithDump(r1cs frontend.CompiledConstraintSystem, session string) error {
+
+	switch _r1cs := r1cs.(type) {
+	case *backend_bn254.R1CS:
+		if err := groth16_bn254.SetupWithDump(_r1cs, session); err != nil {
+			return err
+		}
+		return nil
+	default:
+		panic("unrecognized R1CS curve type")
+	}
+}
+
+func SetupLazyWithDump(r1cs frontend.CompiledConstraintSystem, session string) error {
+
+	switch _r1cs := r1cs.(type) {
+	case *backend_bn254.R1CS:
+		_r1cs.Lazify()
+		if err := groth16_bn254.SetupLazyWithDump(_r1cs, session); err != nil {
+			return err
+		}
+		return nil
 	default:
 		panic("unrecognized R1CS curve type")
 	}

@@ -197,3 +197,99 @@ func (builder *builder) mustBeLessOrEqCst(a expr.LinearExpression, bound big.Int
 		builder.cs.AttachDebugInfo(debug, added)
 	}
 }
+
+//func (system *r1cs) mustBeLessOrEqVar(a, bound compiled.LinearExpression) {
+//	debug := system.AddDebugInfo("mustBeLessOrEq", a, " <= ", bound)
+//
+//	nbBits := system.BitLen()
+//
+//	aBits := bits.ToBinary(system, a, bits.WithNbDigits(nbBits), bits.WithUnconstrainedOutputs())
+//	boundBits := system.ToBinary(bound, nbBits)
+//
+//	p := make([]frontend.Variable, nbBits+1)
+//	p[nbBits] = system.toVariable(1)
+//
+//	zero := system.toVariable(0)
+//
+//	for i := nbBits - 1; i >= 0; i-- {
+//
+//		// if bound[i] == 0
+//		// 		p[i] = p[i+1]
+//		//		t = p[i+1]
+//		// else
+//		// 		p[i] = p[i+1] * a[i]
+//		//		t = 0
+//		v := system.Mul(p[i+1], aBits[i])
+//		p[i] = system.Select(boundBits[i], v, p[i+1])
+//
+//		t := system.Select(boundBits[i], zero, p[i+1])
+//
+//		// (1 - t - ai) * ai == 0
+//		var l frontend.Variable
+//		l = system.one()
+//		l = system.Sub(l, t, aBits[i])
+//
+//		// note if bound[i] == 1, this constraint is (1 - ai) * ai == 0
+//		// → this is a boolean constraint
+//		// if bound[i] == 0, t must be 0 or 1, thus ai must be 0 or 1 too
+//		system.MarkBoolean(aBits[i].(compiled.LinearExpression)) // this does not create a constraint
+//
+//		system.addConstraint(newR1C(l, aBits[i], zero), debug)
+//	}
+//
+//}
+//
+//func (system *r1cs) mustBeLessOrEqCst(a compiled.LinearExpression, bound big.Int) {
+//
+//	nbBits := system.BitLen()
+//
+//	// ensure the bound is positive, it's bit-len doesn't matter
+//	if bound.Sign() == -1 {
+//		panic("AssertIsLessOrEqual: bound must be positive")
+//	}
+//	if bound.BitLen() > nbBits {
+//		panic("AssertIsLessOrEqual: bound is too large, constraint will never be satisfied")
+//	}
+//
+//	// debug info
+//	debug := system.AddDebugInfo("mustBeLessOrEq", a, " <= ", system.toVariable(bound))
+//
+//	// note that at this stage, we didn't boolean-constraint these new variables yet
+//	// (as opposed to ToBinary)
+//	aBits := bits.ToBinary(system, a, bits.WithNbDigits(nbBits), bits.WithUnconstrainedOutputs())
+//
+//	// t trailing bits in the bound
+//	t := 0
+//	for i := 0; i < nbBits; i++ {
+//		if bound.Bit(i) == 0 {
+//			break
+//		}
+//		t++
+//	}
+//
+//	p := make([]frontend.Variable, nbBits+1)
+//	// p[i] == 1 → a[j] == c[j] for all j ⩾ i
+//	p[nbBits] = system.toVariable(1)
+//
+//	for i := nbBits - 1; i >= t; i-- {
+//		if bound.Bit(i) == 0 {
+//			p[i] = p[i+1]
+//		} else {
+//			p[i] = system.Mul(p[i+1], aBits[i])
+//		}
+//	}
+//
+//	for i := nbBits - 1; i >= 0; i-- {
+//		if bound.Bit(i) == 0 {
+//			// (1 - p(i+1) - ai) * ai == 0
+//			l := system.Sub(1, p[i+1])
+//			l = system.Sub(l, aBits[i])
+//
+//			system.addConstraint(newR1C(l, aBits[i], system.toVariable(0)), debug)
+//			system.MarkBoolean(aBits[i].(compiled.LinearExpression))
+//		} else {
+//			system.AssertIsBoolean(aBits[i])
+//		}
+//	}
+//
+//}

@@ -68,48 +68,17 @@ jobs:
       run: |
         go test -v -short -timeout=30m ./...
   
-  slack-workflow-status-failed:
-    if: failure()
+  slack-workflow-status:
+    if: always()
     name: post workflow status to slack
     needs:
       - staticcheck
       - test
     runs-on: ubuntu-latest
     steps:
-      - name: Notify slack -- workflow failed
-        id: slack
-        uses: slackapi/slack-github-action@v1.19.0
+      - name: Build notification
+        uses: Gamesight/slack-workflow-status@master
         with:
-          payload: |
-            {
-              "actor": "${{ github.actor }}",
-              "repo": "${{ github.repository }}",
-              "status": "FAIL",
-              "title": "${{ github.event.pull_request.title }}",
-              "pr": "${{ github.event.pull_request.head.ref }}"
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
-  slack-workflow-status-success:
-    if: success()
-    name: post workflow status to slack
-    needs:
-      - staticcheck
-      - test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Notify slack -- workflow succeeded
-        id: slack
-        uses: slackapi/slack-github-action@v1.19.0
-        with:
-          payload: |
-            {
-              "actor": "${{ github.actor }}",
-              "repo": "${{ github.repository }}",
-              "status": "SUCCESS",
-              "title": "${{ github.event.pull_request.title }}",
-              "pr": "${{ github.event.pull_request.head.ref }}"
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_SUCCESS }}
+          repo_token: ${{secrets.GITHUB_TOKEN}}
+          slack_webhook_url: ${{secrets.SLACK_WEBHOOK_URL}}
+          channel: '#team-gnark-build'
