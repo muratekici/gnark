@@ -84,6 +84,27 @@ type VerifyingKey struct {
 }
 
 func SetupWithDump(r1cs *cs.R1CS, session string) error { //, pk *ProvingKey, vk *VerifyingKey) error {
+	// dump r1cs to file
+	cTFile, err := os.Create(fmt.Sprintf("%s.ccs.ct.save", session))
+	if err != nil {
+		return err
+	}
+	_, err = r1cs.WriteCTTo(cTFile)
+	_ = cTFile.Close()
+	if err != nil {
+		return err
+	}
+	// remove CoefT from cbor
+	ccsFile, err := os.Create(fmt.Sprintf("%s.ccs.save", session))
+	if err != nil {
+		return err
+	}
+	_, err = r1cs.WriteTo(ccsFile)
+	_ = ccsFile.Close()
+	if err != nil {
+		return err
+	}
+
 	var pk ProvingKey
 	var vk VerifyingKey
 
@@ -242,6 +263,7 @@ func SetupWithDump(r1cs *cs.R1CS, session string) error { //, pk *ProvingKey, vk
 			return err
 		}
 		_, err = vk.WriteRawTo(vkFile)
+		_ = vkFile.Close()
 		if err != nil {
 			return err
 		}
@@ -261,6 +283,7 @@ func SetupWithDump(r1cs *cs.R1CS, session string) error { //, pk *ProvingKey, vk
 			return err
 		}
 		_, err = pk.WriteRawATo(pkFile)
+		_ = pkFile.Close()
 		if err != nil {
 			return err
 		}
@@ -280,6 +303,7 @@ func SetupWithDump(r1cs *cs.R1CS, session string) error { //, pk *ProvingKey, vk
 			return err
 		}
 		_, err = pk.WriteRawB1To(pkFile)
+		_ = pkFile.Close()
 		if err != nil {
 			return err
 		}
@@ -299,6 +323,7 @@ func SetupWithDump(r1cs *cs.R1CS, session string) error { //, pk *ProvingKey, vk
 			return err
 		}
 		_, err = pk.WriteRawKTo(pkFile)
+		_ = pkFile.Close()
 		if err != nil {
 			return err
 		}
@@ -319,6 +344,7 @@ func SetupWithDump(r1cs *cs.R1CS, session string) error { //, pk *ProvingKey, vk
 			return err
 		}
 		_, err = pk.WriteRawZTo(pkFile)
+		_ = pkFile.Close()
 		if err != nil {
 			return err
 		}
@@ -338,6 +364,7 @@ func SetupWithDump(r1cs *cs.R1CS, session string) error { //, pk *ProvingKey, vk
 			return err
 		}
 		_, err = pk.WriteRawB2To(pkFile)
+		_ = pkFile.Close()
 		if err != nil {
 			return err
 		}
