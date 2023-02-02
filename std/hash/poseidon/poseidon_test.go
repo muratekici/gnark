@@ -67,7 +67,7 @@ func (circuit *poseidonCircuit256) Define(api frontend.API) error {
 func TestPoseidon2(t *testing.T) {
 	assert := test.NewAssert(t)
 	var circuit, witness poseidonCircuit2
-	hash, _ := new(big.Int).SetString("115cc0f5e7d690413df64c6b9662e9cf2a3617f2743245519e19607a4417189a", 16)
+	hash, _ := new(big.Int).SetString("FCA49B798923AB0239DE1C9E7A4A9A2210312B6A2F616D18B5A87F9B628AE29", 16)
 
 	// Test completeness
 	size := 2
@@ -81,7 +81,7 @@ func TestPoseidon2(t *testing.T) {
 func TestPoseidon4(t *testing.T) {
 	assert := test.NewAssert(t)
 	var circuit, witness, wrongWitness poseidonCircuit4
-	hash, _ := new(big.Int).SetString("299c867db6c1fdd79dcefa40e4510b9837e60ebb1ce0663dbaa525df65250465", 16)
+	hash, _ := new(big.Int).SetString("1148AAEF609AA338B27DAFD89BB98862D8BB2B429ACEAC47D86206154FFE053D", 16)
 
 	// Test completeness
 	size := 4
@@ -103,7 +103,7 @@ func TestPoseidon4(t *testing.T) {
 func TestPoseidon24(t *testing.T) {
 	assert := test.NewAssert(t)
 	var circuit, witness, wrongWitness poseidonCircuit24
-	hash, _ := new(big.Int).SetString("612D378F91DC3422E6C60E54D24E3FA6D8000F0E47CDACE9BDB304506E3C9D3", 16)
+	hash, _ := new(big.Int).SetString("6C7676E83EF8CB9EF6C25746A5F6B2D39FBA4548B4C29B3D41490BBF3C1108D", 16)
 
 	// Test completeness
 	size := 24
@@ -125,7 +125,7 @@ func TestPoseidon24(t *testing.T) {
 func TestPoseidon30(t *testing.T) {
 	assert := test.NewAssert(t)
 	var circuit, witness, wrongWitness poseidonCircuit30
-	hash, _ := new(big.Int).SetString("140CEA90C05A04C7140337789BD4CDE38BA73EE1988D34533F3F8F7B6AAC5675", 16)
+	hash, _ := new(big.Int).SetString("2FF47AB8E9E9F6134600A8DE8B8E99596E573620A7D8D39ED7B2C7CEF9F105F1", 16)
 
 	// Test completeness
 	size := 30
@@ -146,7 +146,7 @@ func TestPoseidon30(t *testing.T) {
 func TestPoseidon256(t *testing.T) {
 	assert := test.NewAssert(t)
 	var circuit, witness, wrongWitness poseidonCircuit256
-	hash, _ := new(big.Int).SetString("15b218692488b5ce4c9f8571e7daef78bd39cc455d431572f5f5f2933e4f5ea2", 16)
+	hash, _ := new(big.Int).SetString("182AF1C3FFD14FA66CDF5FE5D5199473678F221CA3BAB09B44758EF80641C1E0", 16)
 
 	// Test completeness
 	size := 256
