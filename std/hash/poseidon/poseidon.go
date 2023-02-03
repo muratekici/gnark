@@ -124,5 +124,5 @@ func Poseidon(api frontend.API, input ...frontend.Variable) frontend.Variable {
 		api.AddLazyPoseidon(v, state[:remainigLength+1]...)
 		state = permutation(api, state[:remainigLength+1])
 	}
-	return state[0]
+	return state[1]
 }
