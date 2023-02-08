@@ -373,6 +373,7 @@ func (builder *builder) Xor(_a, _b frontend.Variable) frontend.Variable {
 	builder.AssertIsBoolean(a)
 	builder.AssertIsBoolean(b)
 
+<<<<<<< HEAD
 	// instead of writing a + b - 2ab
 	// we do a * (1 - 2b) + b
 	// to limit large linear expressions
@@ -387,6 +388,15 @@ func (builder *builder) Xor(_a, _b frontend.Variable) frontend.Variable {
 
 	builder.MarkBoolean(t)
 
+=======
+	if len(b) > len(a) {
+		a, b = b, a
+	}
+	t := system.Sub(system.one(), system.Mul(b, 2))
+	t = system.Add(system.Mul(a, t), b)
+	system.MarkBoolean(t)
+
+>>>>>>> 6fbe2072 (delay add constraint in xor)
 	return t
 }
 
