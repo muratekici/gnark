@@ -119,8 +119,12 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	l := proof.BatchedProof.ClaimedValues[2]
 	r := proof.BatchedProof.ClaimedValues[3]
 	o := proof.BatchedProof.ClaimedValues[4]
-	s1 := proof.BatchedProof.ClaimedValues[5]
-	s2 := proof.BatchedProof.ClaimedValues[6]
+	// s1 := proof.BatchedProof.ClaimedValues[5]
+	// s2 := proof.BatchedProof.ClaimedValues[6]
+	b1 := proof.BatchedProof.ClaimedValues[5]
+	b2 := proof.BatchedProof.ClaimedValues[6]
+	s1 := proof.BatchedProof.ClaimedValues[7]
+	s2 := proof.BatchedProof.ClaimedValues[8]
 
 	// var beta fr.Element
 	// beta.SetUint64(10)
@@ -193,12 +197,15 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 	_s2.Mul(&_s2, &alpha).Add(&_s2, &alphaSquareLagrange) // -α*(l(ζ)+β*ζ+γ)*(r(ζ)+β*u*ζ+γ)*(o(ζ)+β*u²*ζ+γ) + α²*L₁(ζ)
 
 	points := []curve.G1Affine{
-		vk.Ql, vk.Qr, vk.Qm, vk.Qo, vk.Qk, // first part
+		vk.Ql, vk.Qr, vk.Qm, vk.Qo, vk.Qk, vk.Qb, // first part
 		vk.S[2], proof.Z, // second & third part
 	}
 
+	var b fr.Element
+	b.Double(&b2)
+	b.Add(&b, &b1)
 	scalars := []fr.Element{
-		l, r, rl, o, one, // first part
+		l, r, rl, o, one, b, // first part
 		_s1, _s2, // second & third part
 	}
 	if _, err := linearizedPolynomialDigest.MultiExp(points, scalars, ecc.MultiExpConfig{ScalarsMont: true}); err != nil {
@@ -212,6 +219,8 @@ func Verify(proof *Proof, vk *VerifyingKey, publicWitness bn254witness.Witness) 
 		proof.LRO[0],
 		proof.LRO[1],
 		proof.LRO[2],
+		proof.B[0],
+		proof.B[1],
 		vk.S[0],
 		vk.S[1],
 	},

@@ -18,10 +18,13 @@ package plonk
 
 import (
 	"errors"
+	"fmt"
+	"github.com/consensys/gnark-crypto/ecc/bn254"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/fft"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/kzg"
 	"github.com/consensys/gnark/internal/backend/bn254/cs"
+	"github.com/consensys/gnark/internal/backend/bn254/plonk/build_lagrange"
 
 	kzgg "github.com/consensys/gnark-crypto/kzg"
 )
@@ -44,6 +47,9 @@ type ProvingKey struct {
 	// LQk (CQk) qk in Lagrange basis (canonical basis), prepended with as many zeroes as public inputs.
 	// Storing LQk in Lagrange basis saves a fft...
 	CQk, LQk []fr.Element
+
+	// For binary gate
+	Qb []fr.Element
 
 	// Domains used for the FFTs.
 	// Domain[0] = small Domain
@@ -72,7 +78,9 @@ type VerifyingKey struct {
 	NbPublicVariables uint64
 
 	// Commitment scheme that is used for an instantiation of PLONK
-	KZGSRS *kzg.SRS
+	// TODO: use just one srs instead
+	KZGSRS    *kzg.SRS
+	KZGSRSLAG *kzg.SRS
 
 	// cosetShift generator of the coset on the small domain
 	CosetShift fr.Element
@@ -82,7 +90,7 @@ type VerifyingKey struct {
 
 	// Commitments to ql, qr, qm, qo prepended with as many zeroes (ones for l) as there are public inputs.
 	// In particular Qk is not complete.
-	Ql, Qr, Qm, Qo, Qk kzg.Digest
+	Ql, Qr, Qm, Qo, Qk, Qb kzg.Digest
 }
 
 // Setup sets proving and verifying keys
@@ -125,6 +133,7 @@ func Setup(spr *cs.SparseR1CS, srs *kzg.SRS) (*ProvingKey, *VerifyingKey, error)
 	pk.Qo = make([]fr.Element, pk.Domain[0].Cardinality)
 	pk.CQk = make([]fr.Element, pk.Domain[0].Cardinality)
 	pk.LQk = make([]fr.Element, pk.Domain[0].Cardinality)
+	pk.Qb = make([]fr.Element, pk.Domain[0].Cardinality)
 
 	for i := 0; i < spr.NbPublicVariables; i++ { // placeholders (-PUB_INPUT_i + qk_i = 0) TODO should return error is size is inconsistant
 		pk.Ql[i].SetOne().Neg(&pk.Ql[i])
@@ -133,6 +142,7 @@ func Setup(spr *cs.SparseR1CS, srs *kzg.SRS) (*ProvingKey, *VerifyingKey, error)
 		pk.Qo[i].SetZero()
 		pk.CQk[i].SetZero()
 		pk.LQk[i].SetZero() // → to be completed by the prover
+		pk.Qb[i].SetZero()
 	}
 	offset := spr.NbPublicVariables
 	for i := 0; i < nbConstraints; i++ { // constraints
@@ -144,6 +154,7 @@ func Setup(spr *cs.SparseR1CS, srs *kzg.SRS) (*ProvingKey, *VerifyingKey, error)
 		pk.Qo[offset+i].Set(&spr.Coefficients[spr.Constraints[i].O.CoeffID()])
 		pk.CQk[offset+i].Set(&spr.Coefficients[spr.Constraints[i].K])
 		pk.LQk[offset+i].Set(&spr.Coefficients[spr.Constraints[i].K])
+		pk.Qb[offset+i].Set(&spr.Coefficients[spr.Constraints[i].B.CoeffID()])
 	}
 
 	pk.Domain[0].FFTInverse(pk.Ql, fft.DIF)
@@ -151,11 +162,13 @@ func Setup(spr *cs.SparseR1CS, srs *kzg.SRS) (*ProvingKey, *VerifyingKey, error)
 	pk.Domain[0].FFTInverse(pk.Qm, fft.DIF)
 	pk.Domain[0].FFTInverse(pk.Qo, fft.DIF)
 	pk.Domain[0].FFTInverse(pk.CQk, fft.DIF)
+	pk.Domain[0].FFTInverse(pk.Qb, fft.DIF)
 	fft.BitReverse(pk.Ql)
 	fft.BitReverse(pk.Qr)
 	fft.BitReverse(pk.Qm)
 	fft.BitReverse(pk.Qo)
 	fft.BitReverse(pk.CQk)
+	fft.BitReverse(pk.Qb)
 
 	// build permutation. Note: at this stage, the permutation takes in account the placeholders
 	buildPermutation(spr, &pk)
@@ -180,6 +193,10 @@ func Setup(spr *cs.SparseR1CS, srs *kzg.SRS) (*ProvingKey, *VerifyingKey, error)
 	if vk.Qk, err = kzg.Commit(pk.CQk, vk.KZGSRS); err != nil {
 		return nil, nil, err
 	}
+	if vk.Qb, err = kzg.Commit(pk.Qb, vk.KZGSRS); err != nil {
+		// if vk.Qb, err = LagCommit(pk.LQk, vk.KZGSRSLAG); err != nil {
+		return nil, nil, err
+	}
 	if vk.S[0], err = kzg.Commit(pk.S1Canonical, vk.KZGSRS); err != nil {
 		return nil, nil, err
 	}
@@ -194,13 +211,25 @@ func Setup(spr *cs.SparseR1CS, srs *kzg.SRS) (*ProvingKey, *VerifyingKey, error)
 
 }
 
+func LagCommit(q []fr.Element, srsLag *kzg.SRS) (kzg.Digest, error) {
+	var res bn254.G1Jac
+	for i := range q {
+		if q[i].IsOne() {
+			res.AddMixed(&srsLag.G1[i])
+		}
+	}
+	var ret bn254.G1Affine
+	ret.FromJacobian(&res)
+	return ret, nil
+}
+
 // buildPermutation builds the Permutation associated with a circuit.
 //
 // The permutation s is composed of cycles of maximum length such that
 //
-// 			s. (l∥r∥o) = (l∥r∥o)
+//	s. (l∥r∥o) = (l∥r∥o)
 //
-//, where l∥r∥o is the concatenation of the indices of l, r, o in
+// , where l∥r∥o is the concatenation of the indices of l, r, o in
 // ql.l+qr.r+qm.l.r+qo.O+k = 0.
 //
 // The permutation is encoded as a slice s of size 3*size(l), where the
@@ -258,11 +287,14 @@ func buildPermutation(spr *cs.SparseR1CS, pk *ProvingKey) {
 // s1, s2, s3.
 //
 // 1	z 	..	z**n-1	|	u	uz	..	u*z**n-1	|	u**2	u**2*z	..	u**2*z**n-1  |
-//  																					 |
-//        																				 | Permutation
+//
+//																						 |
+//	      																				 | Permutation
+//
 // s11  s12 ..   s1n	   s21 s22 	 ..		s2n		     s31 	s32 	..		s3n		 v
 // \---------------/       \--------------------/        \------------------------/
-// 		s1 (LDE)                s2 (LDE)                          s3 (LDE)
+//
+//	s1 (LDE)                s2 (LDE)                          s3 (LDE)
 func ccomputePermutationPolynomials(pk *ProvingKey) {
 
 	nbElmts := int(pk.Domain[0].Cardinality)
@@ -338,6 +370,14 @@ func (vk *VerifyingKey) InitKZG(srs kzgg.SRS) error {
 		return errors.New("kzg srs is too small")
 	}
 	vk.KZGSRS = _srs
+	// TODO: convert to KZGSRSLAG only if necessary
+	srsLagG1, err := build_lagrange.BuildLagrange(_srs.G1, int(vk.Size))
+	if err != nil {
+		return errors.New("srsLag convert failed")
+	}
+	srsLag := kzg.SRS{G1: srsLagG1, G2: _srs.G2}
+	vk.KZGSRSLAG = &srsLag
+	fmt.Println("SRSLag converted", vk.Size)
 
 	return nil
 }

@@ -37,6 +37,7 @@ type SparseR1C struct {
 	L, R, O Term
 	M       [2]Term
 	K       int // stores only the ID of the constant term that is used
+	B       Term
 }
 
 func (r1c *SparseR1C) String(coeffs []big.Int) string {
