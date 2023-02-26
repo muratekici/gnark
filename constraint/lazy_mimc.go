@@ -1,4 +1,4 @@
-package compiled
+package constraint
 
 import (
 	"github.com/consensys/gnark-crypto/ecc"

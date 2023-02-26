@@ -2,10 +2,10 @@ package poseidon
 
 import (
 	"github.com/consensys/gnark/backend/hint"
-	"github.com/consensys/gnark/frontend/compiled"
 	"github.com/consensys/gnark/std/hash/poseidon/constants"
 
 	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/constraint"
 )
 
 // power 5 as s-box
