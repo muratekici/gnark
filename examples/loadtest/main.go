@@ -16,9 +16,11 @@ package main
 
 import (
 	"fmt"
+	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/constraint"
 	bn254r1cs "github.com/consensys/gnark/constraint/bn254"
+	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	groth16_bn254 "github.com/consensys/gnark/internal/backend/bn254/groth16"
 	"github.com/consensys/gnark/std/hash/mimc"
@@ -26,9 +28,6 @@ import (
 	"os"
 	"runtime"
 	"sync"
-
-	"github.com/consensys/gnark-crypto/ecc"
-	"github.com/consensys/gnark/frontend"
 
 	"github.com/DmitriyVTitov/size"
 )
@@ -47,7 +46,7 @@ type Circuit struct {
 // Define declares the circuit's constraints
 // Hash = mimc(PreImage)
 func (circuit *Circuit) Define(api frontend.API) error {
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 100000; i++ {
 		mimc, _ := mimc.NewMiMC(api)
 		mimc.Write(circuit.PreImage)
 		api.AssertIsEqual(circuit.Hash, mimc.Sum())
@@ -166,8 +165,9 @@ func SplitDumpR1CS(ccs *bn254r1cs.R1CS, session string, batchSize int) error {
 		if err != nil {
 			return err
 		}
-		cnt, err := ccs2.WriteTo(csFile)
-		fmt.Println("written ", cnt, name)
+		// cnt, err := ccs2.WriteTo(csFile)
+		// fmt.Println("written ", cnt, name)
+		ccs2.WriteTo(csFile)
 	}
 
 	N := len(ccs.R1CSCore.Constraints)
@@ -184,8 +184,9 @@ func SplitDumpR1CS(ccs *bn254r1cs.R1CS, session string, batchSize int) error {
 		if err != nil {
 			return err
 		}
-		cnt, err := ccs2.WriteTo(csFile)
-		fmt.Println("written ", cnt, name)
+		// cnt, err := ccs2.WriteTo(csFile)
+		// fmt.Println("written ", cnt, name)
+		ccs2.WriteTo(csFile)
 
 		i = iNew
 	}
@@ -233,46 +234,51 @@ func LoadSplittedR1CS(session string, N, batchSize int) *bn254r1cs.R1CS {
 	return ccs
 }
 
-func LoadSplittedR1CSConcurrent(session string, N, batchSize int) *bn254r1cs.R1CS {
+func LoadSplittedR1CSConcurrent(session string, N, batchSize, NCore int) *bn254r1cs.R1CS {
 	ccs := &bn254r1cs.R1CS{}
-	// E part
-	{
-		ccs2 := &bn254r1cs.R1CS{}
-
-		name := fmt.Sprintf("%s.r1cs.E.save", session)
-		csFile, err := os.Open(name)
-		if err != nil {
-			panic(err)
-		}
-		cnt, err := ccs2.ReadFrom(csFile)
-		fmt.Println("read ", cnt, name)
-
-		ccs.CoeffTable = ccs2.CoeffTable
-		ccs.R1CSCore.System = ccs2.R1CSCore.System
-	}
 	ccs.R1CSCore.Constraints = make([]constraint.R1C, N)
 
 	var wg sync.WaitGroup
-	chTasks := make(chan int, runtime.NumCPU())
+	chTasks := make(chan int, NCore)
 	// worker pool
-	for core := 0; core < runtime.NumCPU(); core++ {
+	for core := 0; core < NCore; core++ {
 		go func() {
 			for i := range chTasks {
-				ccs2 := &bn254r1cs.R1CS{}
-				iNew := i + batchSize
-				if iNew > N {
-					iNew = N
-				}
-				name := fmt.Sprintf("%s.r1cs.Cons.%d.%d.save", session, i, iNew)
-				csFile, err := os.Open(name)
-				if err != nil {
-					panic(err)
-				}
-				cnt, err := ccs2.ReadFrom(csFile)
-				fmt.Println("read ", cnt, name)
-				copy(ccs.R1CSCore.Constraints[i:iNew], ccs2.R1CSCore.Constraints)
+				if i < 0 {
+					// E part
+					ccs2 := &bn254r1cs.R1CS{}
 
-				wg.Done()
+					name := fmt.Sprintf("%s.r1cs.E.save", session)
+					csFile, err := os.Open(name)
+					if err != nil {
+						panic(err)
+					}
+					// cnt, err := ccs2.ReadFrom(csFile)
+					// fmt.Println("read ", cnt, name)
+					ccs2.ReadFrom(csFile)
+
+					ccs.CoeffTable = ccs2.CoeffTable
+					ccs.R1CSCore.System = ccs2.R1CSCore.System
+
+					wg.Done()
+				} else {
+					ccs2 := &bn254r1cs.R1CS{}
+					iNew := i + batchSize
+					if iNew > N {
+						iNew = N
+					}
+					name := fmt.Sprintf("%s.r1cs.Cons.%d.%d.save", session, i, iNew)
+					csFile, err := os.Open(name)
+					if err != nil {
+						panic(err)
+					}
+					// cnt, err := ccs2.ReadFrom(csFile)
+					// fmt.Println("read ", cnt, name)
+					ccs2.ReadFrom(csFile)
+					copy(ccs.R1CSCore.Constraints[i:iNew], ccs2.R1CSCore.Constraints)
+
+					wg.Done()
+				}
 			}
 		}()
 	}
@@ -281,6 +287,8 @@ func LoadSplittedR1CSConcurrent(session string, N, batchSize int) *bn254r1cs.R1C
 		close(chTasks)
 	}()
 
+	wg.Add(1)
+	chTasks <- -1
 	for i := 0; i < N; {
 		// read R1C[i, min(i+batchSize, end)]
 		iNew := i + batchSize
@@ -355,7 +363,7 @@ func main() {
 		fmt.Println("size of ccs3.system:", size.Of(ccs3.R1CSCore.System))
 		fmt.Println("size of ccs3.constraints:", size.Of(ccs3.R1CSCore.Constraints))
 		SplitDumpR1CS(ccs3, "LoadTestFoo", 10000)
-		ccs33 := LoadSplittedR1CSConcurrent("LoadTestFoo", len(ccs3.Constraints), 10000)
+		ccs33 := LoadSplittedR1CSConcurrent("LoadTestFoo", len(ccs3.Constraints), 10000, runtime.NumCPU())
 		fmt.Println("size of ccs33:", size.Of(ccs33))
 		fmt.Println("size of ccs33.system:", size.Of(ccs33.R1CSCore.System))
 		fmt.Println("size of ccs33.constraints:", size.Of(ccs33.R1CSCore.Constraints))
