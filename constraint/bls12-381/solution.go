@@ -40,9 +40,17 @@ type solution struct {
 	mHintsFunctions      map[hint.ID]hint.Function // maps hintID to hint function
 	mHints               map[int]*constraint.Hint  // maps wireID to hint
 	st                   *debug.SymbolTable
+	MIMCHints            map[int]bool // maps to tell if the hints is mimc
+	MIMCHintsInputs      [][]*big.Int // every mimc hints has two inputs
+	InitialValuesLength  int
 }
 
-func newSolution(nbWires int, hintFunctions map[hint.ID]hint.Function, hintsDependencies map[hint.ID]string, mHints map[int]*constraint.Hint, coefficients []fr.Element, st *debug.SymbolTable) (solution, error) {
+func newSolution(nbWires int, hintFunctions map[hint.ID]hint.Function, hintsDependencies map[hint.ID]string, mHints map[int]*constraint.Hint, coefficients []fr.Element, st *debug.SymbolTable, MIMCHints []int) (solution, error) {
+
+	mimcHintsMap := make(map[int]bool)
+	for _, vId := range MIMCHints {
+		mimcHintsMap[vId] = true
+	}
 
 	s := solution{
 		st:              st,
@@ -51,6 +59,8 @@ func newSolution(nbWires int, hintFunctions map[hint.ID]hint.Function, hintsDepe
 		solved:          make([]bool, nbWires),
 		mHintsFunctions: hintFunctions,
 		mHints:          mHints,
+		MIMCHints:       mimcHintsMap,
+		MIMCHintsInputs: make([][]*big.Int, 0),
 	}
 
 	// hintsDependencies is from compile time; it contains the list of hints the solver **needs**
@@ -198,6 +208,9 @@ func (s *solution) solveWithHint(vID int, h *constraint.Hint) error {
 		v.BigInt(inputs[i])
 	}
 
+	if s.MIMCHints[vID] {
+		s.MIMCHintsInputs = append(s.MIMCHintsInputs, inputs)
+	}
 	err := f(q, inputs, outputs)
 
 	var v fr.Element
