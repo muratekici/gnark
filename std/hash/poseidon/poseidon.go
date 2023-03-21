@@ -110,5 +110,6 @@ func Poseidon(api frontend.API, input ...frontend.Variable) frontend.Variable {
 		state = permutation(api, state[:remainigLength+1])
 		api.RecordConstraintsForLazy(cs.GetLazyPoseidonKey(len(state[:remainigLength+1])), true, &input)
 	}
-	return state[0]
+	// TODO: compatible to gnark-crypto, need modify of gnark-crypto
+	return state[1]
 }
