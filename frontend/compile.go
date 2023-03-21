@@ -135,7 +135,6 @@ type CompileConfig struct {
 	Capacity                  int
 	IgnoreUnconstrainedInputs bool
 	CompressThreshold         int
-	GKRBN                     int
 }
 
 // WithCapacity is a compile option that specifies the estimated capacity needed
@@ -144,14 +143,6 @@ type CompileConfig struct {
 func WithCapacity(capacity int) CompileOption {
 	return func(opt *CompileConfig) error {
 		opt.Capacity = capacity
-		return nil
-	}
-}
-
-// WithGKRBN is function defining the gkr bN
-func WithGKRBN(GkrBN int) CompileOption {
-	return func(opt *CompileConfig) error {
-		opt.GKRBN = GkrBN
 		return nil
 	}
 }

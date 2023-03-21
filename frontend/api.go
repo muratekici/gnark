@@ -133,6 +133,4 @@ type API interface {
 	// @params finished will appear in couple around the repeatable structure, first false, then true
 	// @Params s is the inputs and same order with the repeatable structure
 	RecordConstraintsForLazy(key string, finished bool, s *[]Variable)
-
-	AddGKRInputsAndOutputsMarks(inputs []Variable, outputs []Variable)
 }

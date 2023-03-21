@@ -123,13 +123,11 @@ type System struct {
 	bitLen int      `cbor:"-"`
 
 	// level builder
-	lbWireLevel    []int              `cbor:"-"` // at which level we solve a wire. init at -1.
-	lbOutputs      []uint32           `cbor:"-"` // wire outputs for current constraint.
-	lbHints        map[*Hint]struct{} `cbor:"-"` // hints we processed in current round
-	gkrTransferMap map[int]int        `cbor:"-"` // gkr transfer map
+	lbWireLevel []int              `cbor:"-"` // at which level we solve a wire. init at -1.
+	lbOutputs   []uint32           `cbor:"-"` // wire outputs for current constraint.
+	lbHints     map[*Hint]struct{} `cbor:"-"` // hints we processed in current round
 
 	CommitmentInfo Commitment
-	GKRMeta        GkrMeta
 }
 
 // NewSystem initialize the common structure among constraint system
@@ -144,7 +142,6 @@ func NewSystem(scalarField *big.Int) System {
 		q:                  new(big.Int).Set(scalarField),
 		bitLen:             scalarField.BitLen(),
 		lbHints:            map[*Hint]struct{}{},
-		gkrTransferMap:     make(map[int]int),
 	}
 }
 
@@ -249,12 +246,6 @@ func (system *System) AddSolverHint(f hint.Function, input []LinearExpression, n
 	ch := &Hint{ID: hintUUID, Inputs: input, Wires: internalVariables}
 	for _, vID := range internalVariables {
 		system.MHints[vID] = ch
-	}
-	for _, vID := range internalVariables {
-		system.MHints[vID] = ch
-		if hint.Name(f) == hint.Name(hint.MIMC2Elements) {
-			system.GKRMeta.MIMCHints = append(system.GKRMeta.MIMCHints, vID)
-		}
 	}
 
 	return
