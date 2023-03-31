@@ -64,7 +64,7 @@ func addShiftToTermsForExpression(expression constraint.LinearExpression, shift 
 func createGeneralLazyInputsFunc(key string) func(inputs []constraint.R1C, loc int, constraintsNum int, paramsNum int, shift int) constraint.LazyInputs {
 	return func(inputs []constraint.R1C, loc int, constraintsNum int, paramsNum int, shift int) constraint.LazyInputs {
 		return &GeneralLazyInputs{
-			InputConstraints: inputs,
+			InputConstraints: inputs[:],
 			ParamsNum:        paramsNum,
 			Loc:              loc,
 			ConstraintsNum:   constraintsNum,
