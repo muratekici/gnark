@@ -112,7 +112,7 @@ func (h *Keccak256) Sum(data ...frontend.Variable) []keccakf2.Xuint8 {
 
 	var res []keccakf2.Xuint8
 	for i := 0; i < d.size/8; i++ {
-		res = h.uapi8.EncodeToXuint8(res, d.a[i])
+		res = h.uapi64.EncodeToXuint8(res, d.a[i])
 	}
 
 	return res

@@ -75,6 +75,28 @@ func (w *Uint8api) assertEq(a, b Xuint8) {
 	}
 }
 
+func (w *Uint8api) DecodeToXuint32(b []Xuint8) Xuint32 {
+	var bits []frontend.Variable
+	for i := 0; i < 4; i++ {
+		bits = append(bits, b[i][:]...)
+	}
+
+	var res Xuint32
+	copy(res[:], bits[:])
+	return res
+}
+
+func (w *Uint8api) DecodeToXuint32BigEndian(b []Xuint8) Xuint32 {
+	var bits []frontend.Variable
+	for i := 3; i >= 0; i-- {
+		bits = append(bits, b[i][:]...)
+	}
+
+	var res Xuint32
+	copy(res[:], bits[:])
+	return res
+}
+
 func (w *Uint8api) DecodeToXuint64(b []Xuint8) Xuint64 {
 	var bits []frontend.Variable
 	for i := 0; i < 8; i++ {
@@ -84,17 +106,4 @@ func (w *Uint8api) DecodeToXuint64(b []Xuint8) Xuint64 {
 	var res Xuint64
 	copy(res[:], bits[:])
 	return res
-}
-
-func (w *Uint8api) EncodeToXuint8(b []Xuint8, x Xuint64) []Xuint8 {
-	var res [8]Xuint8
-	copy(res[0][:], x[0:8])
-	copy(res[1][:], x[8:16])
-	copy(res[2][:], x[16:24])
-	copy(res[3][:], x[24:32])
-	copy(res[4][:], x[32:40])
-	copy(res[5][:], x[40:48])
-	copy(res[6][:], x[48:56])
-	copy(res[7][:], x[56:64])
-	return append(b, res[0], res[1], res[2], res[3], res[4], res[5], res[6], res[7])
 }

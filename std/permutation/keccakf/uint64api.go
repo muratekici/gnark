@@ -118,3 +118,16 @@ func (w *Uint64api) assertEq(a, b Xuint64) {
 		w.api.AssertIsEqual(a[i], b[i])
 	}
 }
+
+func (w *Uint64api) EncodeToXuint8(b []Xuint8, x Xuint64) []Xuint8 {
+	var res [8]Xuint8
+	copy(res[0][:], x[0:8])
+	copy(res[1][:], x[8:16])
+	copy(res[2][:], x[16:24])
+	copy(res[3][:], x[24:32])
+	copy(res[4][:], x[32:40])
+	copy(res[5][:], x[40:48])
+	copy(res[6][:], x[48:56])
+	copy(res[7][:], x[56:64])
+	return append(b, res[0], res[1], res[2], res[3], res[4], res[5], res[6], res[7])
+}
