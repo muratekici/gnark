@@ -72,6 +72,7 @@ type ConstraintSystem interface {
 
 	// Lazify updates the constraint system by removing all the constraints captured by the lazy evaluation
 	// and storing a compressed form separately. It returns the remapping from the old constraint indices to the new ones.
+	// will return nil if no changes made to update levels
 	Lazify() map[int]int
 	GetNbR1C() int
 
