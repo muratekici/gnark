@@ -183,14 +183,12 @@ func (cs *R1CS) Lazify() map[int]int {
 	}
 	cs.Constraints = ret
 
-	badCnt := 0
 	for i, row := range cs.Levels {
 		for j, val := range row {
 
 			if v, ok := mapFromFull[val]; ok {
 				cs.Levels[i][j] = v
 			} else {
-				badCnt++
 				panic(fmt.Sprintf("bad map loc at %d, %d", i, j))
 			}
 		}
