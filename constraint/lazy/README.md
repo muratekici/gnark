@@ -12,9 +12,9 @@
 
 ### 3.record constraint for lazy, remember to match the key defined above
 ```go=
-    api.RecordConstraintsForLazy(cs.GetLazyPoseidonKey(len(state)), false, state...)
+    api.StartRecordConstraintsForLazy(cs.GetLazyPoseidonKey(len(state)), state...)
     // the code that generates repeated constraints
-    api.RecordConstraintsForLazy(cs.GetLazyPoseidonKey(len(state)), true, state...)
+    api.EndRecordConstraintsForLazy(cs.GetLazyPoseidonKey(len(state)), state...)
 ```
 
 ### 4.call lazify of the constraint system, to compress repeated constraints
