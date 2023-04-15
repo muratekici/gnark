@@ -752,8 +752,6 @@ func LoadSplitPK(Pk *ProvingKey, session string) ProvingKey {
 	default:
 		panic("unsupported Pk curve type")
 	}
-
-	return nil
 }
 
 func SetupDumpKeys(r1cs constraint.ConstraintSystem, session string) error {
