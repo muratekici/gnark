@@ -555,7 +555,8 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness fr.Vector, opt back
 
 		chKrs2Done := make(chan error, 1)
 		go func() {
-			_, err := krs2.MultiExp(pkZ.G1.Z, h, ecc.MultiExpConfig{NbTasks: n / 2})
+			sizeH := int(pkE.Card - 1) // comes from the fact the deg(H)=(n-1)+(n-1)-n=n-2
+			_, err := krs2.MultiExp(pkZ.G1.Z, h[:sizeH], ecc.MultiExpConfig{NbTasks: n / 2})
 			chKrs2Done <- err
 		}()
 		go func() {

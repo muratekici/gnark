@@ -21,6 +21,7 @@ package groth16
 
 import (
 	"fmt"
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr/fft"
 	"io"
 	"os"
 
@@ -461,14 +462,16 @@ func ReadSegmentProveKey(curveID ecc.ID, filepath string) (pks []ProvingKey, err
 			return pks, err
 		}
 
-		commitmentKey, _ := os.Open(filepath + ".pk.CommitmentKey.save")
-		_, err = pks[0].(*groth16_bn254.ProvingKey).UnsafeReadCommitmentKeyFrom(commitmentKey)
-		if err != nil {
-			return pks, fmt.Errorf("read file error")
-		}
-		err = commitmentKey.Close()
-		if err != nil {
-			return pks, err
+		if _, err = os.Stat(filepath + ".pk.CommitmentKey.save"); err == nil {
+			commitmentKey, _ := os.Open(filepath + ".pk.CommitmentKey.save")
+			_, err = pks[0].(*groth16_bn254.ProvingKey).UnsafeReadCommitmentKeyFrom(commitmentKey)
+			if err != nil {
+				return pks, fmt.Errorf("read file error")
+			}
+			err = commitmentKey.Close()
+			if err != nil {
+				return pks, err
+			}
 		}
 
 		f1, _ := os.Open(filepath + ".pk.B2.save")
@@ -548,6 +551,7 @@ func SplitDumpPK(Pk ProvingKey, session string) error {
 	case *groth16_bn254.ProvingKey:
 		// E part
 		{
+			pk.Card = pk.Domain.Cardinality
 			name := fmt.Sprintf("%s.pk.E.save", session)
 			pkFile, err := os.Create(name)
 			if err != nil {
@@ -654,6 +658,100 @@ func SplitDumpPK(Pk ProvingKey, session string) error {
 	}
 
 	return nil
+}
+
+func LoadSplitPK(Pk *ProvingKey, session string) ProvingKey {
+	switch pk := (*Pk).(type) {
+	case *groth16_bn254.ProvingKey:
+		// E part
+		{
+			name := fmt.Sprintf("%s.pk.E.save", session)
+			pkFile, err := os.Open(name)
+			if err != nil {
+				return nil
+			}
+			cnt, err := pk.UnsafeReadEFrom(pkFile)
+			if err != nil {
+				return nil
+			}
+			fmt.Println("read ", cnt, "bytes for pk.E.save")
+			pk.Domain = *fft.NewDomain(pk.Card)
+		}
+
+		// A part
+		{
+			name := fmt.Sprintf("%s.pk.A.save", session)
+			pkFile, err := os.Open(name)
+			if err != nil {
+				return nil
+			}
+			cnt, err := pk.UnsafeReadAFrom(pkFile)
+			if err != nil {
+				return nil
+			}
+			fmt.Println("read ", cnt, "bytes for pk.A.save")
+		}
+
+		// B1 part
+		{
+			name := fmt.Sprintf("%s.pk.B1.save", session)
+			pkFile, err := os.Open(name)
+			if err != nil {
+				return nil
+			}
+			cnt, err := pk.UnsafeReadB1From(pkFile)
+			if err != nil {
+				return nil
+			}
+			fmt.Println("read ", cnt, "bytes for pk.B1.save")
+		}
+
+		// K part
+		{
+			name := fmt.Sprintf("%s.pk.K.save", session)
+			pkFile, err := os.Open(name)
+			if err != nil {
+				return nil
+			}
+			cnt, err := pk.UnsafeReadKFrom(pkFile)
+			if err != nil {
+				return nil
+			}
+			fmt.Println("read ", cnt, "bytes for pk.K.save")
+		}
+
+		// Z part
+		{
+			name := fmt.Sprintf("%s.pk.Z.save", session)
+			pkFile, err := os.Open(name)
+			if err != nil {
+				return nil
+			}
+			cnt, err := pk.UnsafeReadZFrom(pkFile)
+			if err != nil {
+				return nil
+			}
+			fmt.Println("read ", cnt, "bytes for pk.Z.save")
+		}
+
+		// B2 part
+		{
+			name := fmt.Sprintf("%s.pk.B2.save", session)
+			pkFile, err := os.Open(name)
+			if err != nil {
+				return nil
+			}
+			cnt, err := pk.UnsafeReadB2From(pkFile)
+			if err != nil {
+				return nil
+			}
+			fmt.Println("open ", cnt, "bytes for pk.B2.save")
+		}
+
+		return pk
+	default:
+		panic("unsupported Pk curve type")
+	}
 }
 
 func SetupDumpKeys(r1cs constraint.ConstraintSystem, session string) error {
