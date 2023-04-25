@@ -93,4 +93,11 @@ func TestCircuit(t *testing.T) {
 	assert.NoError(t, err)
 	err = groth16.Verify(prf, vk, pubWitness)
 	assert.NoError(t, err)
+
+	// re-prove to see if pks[1] restored
+	prf, err = groth16.ProveRoll(cs2, pks[0], pks[1], witness, session)
+	assert.NoError(t, err)
+
+	err = groth16.Verify(prf, vk, pubWitness)
+	assert.NoError(t, err)
 }
