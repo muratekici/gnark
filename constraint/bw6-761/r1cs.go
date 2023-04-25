@@ -835,6 +835,10 @@ func (cs *R1CS) SplitDumpBinary(session string, batchSize int) error {
 		if err != nil {
 			return err
 		}
+		err = writer.Flush()
+		if err != nil {
+			return err
+		}
 
 		i = iNew
 	}

@@ -7,7 +7,7 @@ import (
 	"github.com/consensys/gnark/std/gkr/common"
 	"github.com/consensys/gnark/std/gkr/polynomial"
 	"github.com/consensys/gnark/std/gkr/sumcheck"
-	"github.com/consensys/gnark/std/hash/poseidon"
+	"github.com/consensys/gnark/std/hash/poseidon/poseidon_bn254"
 
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
 )
@@ -38,7 +38,7 @@ func (v *Verifier) Verify(
 
 	// Initial round, here we use the inputs layer as randomness, for specific inputs, we got specific assignment
 	qPrime, q := GetInitialQPrimeAndQAndInitialHash(v.bN, v.circuit.Layers[nLayers-1].BGOutputs, initialHash)
-	transcript := fiatshamir.NewTranscript(poseidon.NewPoseidon(), challenges...)
+	transcript := fiatshamir.NewTranscript(poseidon_bn254.NewPoseidon(), challenges...)
 	qqPrime := append(q, qPrime...)
 	bytes := make([]byte, 0)
 	for i := range qqPrime {

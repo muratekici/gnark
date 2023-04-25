@@ -305,7 +305,6 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness fr.Vector, opt back
 
 	{
 		card := pkE.Card
-		fmt.Println("card:", card)
 		nbCons := r1cs.GetNbConstraints()
 		a := make([]fr.Element, nbCons, card)
 		b := make([]fr.Element, nbCons, card)
@@ -391,9 +390,11 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness fr.Vector, opt back
 	}
 	n := runtime.NumCPU()
 
-	//Bs2
+	// compute Bs2, load pkA
+	// before: pkE, pkB2; after: pkE, pkA
 	var pkA *ProvingKey
 	chPkA := make(chan *ProvingKey, 1)
+	chPkADone := make(chan error, 1)
 	var wireValuesB []fr.Element
 	{
 		chWireValuesB := make(chan struct{}, 1)
@@ -422,6 +423,7 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness fr.Vector, opt back
 			}
 			if _, err := Bs.MultiExp(pkB2.G2.B, wireValuesB, ecc.MultiExpConfig{NbTasks: nbTasks}); err != nil {
 				chBs2Done <- err
+				return
 			}
 
 			deltaS.FromAffine(&pkE.G2.Delta)
@@ -438,27 +440,40 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness fr.Vector, opt back
 			name := fmt.Sprintf("%s.pk.A.save", session)
 			pkFile, err := os.Open(name)
 			if err != nil {
+				chPkADone <- err
+				chPkA <- nil
 				return
 			}
 			pk := ProvingKey{}
 			_, err = pk.UnsafeReadAFrom(pkFile)
 			if err != nil {
+				chPkADone <- err
+				chPkA <- nil
 				return
 			}
 			chPkA <- &pk
-			close(chPkA)
+			chPkADone <- nil
 		}()
-		<-chBs2Done
+		err := <-chBs2Done
+		if err != nil {
+			return nil, err
+		}
 
 		pkB2.G2.B = make([]curve.G2Affine, 0)
 	}
 	runtime.GC()
 
+	// compute ar1, load pkB1
 	var pkB1 *ProvingKey
 	chPkB1 := make(chan *ProvingKey, 1)
+	chPkB1Done := make(chan error, 1)
 	var ar curve.G1Jac
 	var wireValuesA []fr.Element
 	{
+		err := <-chPkADone
+		if err != nil {
+			return nil, err
+		}
 		pkA = <-chPkA
 
 		chWireValuesA := make(chan struct{}, 1)
@@ -479,7 +494,6 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness fr.Vector, opt back
 		computeAR1 := func() {
 			if _, err := ar.MultiExp(pkA.G1.A, wireValuesA, ecc.MultiExpConfig{NbTasks: n / 2}); err != nil {
 				chArDone <- err
-				close(chArDone)
 				return
 			}
 			ar.AddMixed(&pkE.G1.Alpha)
@@ -493,26 +507,39 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness fr.Vector, opt back
 			name := fmt.Sprintf("%s.pk.B1.save", session)
 			pkFile, err := os.Open(name)
 			if err != nil {
+				chPkB1Done <- err
+				chPkB1 <- nil
 				return
 			}
 			pk := ProvingKey{}
 			_, err = pk.UnsafeReadB1From(pkFile)
 			if err != nil {
+				chPkB1Done <- err
+				chPkB1 <- nil
 				return
 			}
 			chPkB1 <- &pk
-			close(chPkB1)
+			chPkB1Done <- nil
 		}()
-		<-chArDone
+		err = <-chArDone
+		if err != nil {
+			return nil, err
+		}
 
 		pkA = nil
 	}
 	runtime.GC()
 
+	// compute bs1, load pkZ
 	var pkZ *ProvingKey
 	chPkZ := make(chan *ProvingKey, 1)
+	chPkZDone := make(chan error, 1)
 	var bs1 curve.G1Jac
 	{
+		err := <-chPkB1Done
+		if err != nil {
+			return nil, err
+		}
 		pkB1 = <-chPkB1
 
 		chBs1Done := make(chan error, 1)
@@ -527,63 +554,83 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness fr.Vector, opt back
 			chBs1Done <- nil
 		}
 		go computeBS1()
+
 		go func() {
 			name := fmt.Sprintf("%s.pk.Z.save", session)
 			pkFile, err := os.Open(name)
 			if err != nil {
+				chPkZDone <- err
+				chPkZ <- nil
 				return
 			}
 			pk := ProvingKey{}
 			_, err = pk.UnsafeReadZFrom(pkFile)
 			if err != nil {
+				chPkZDone <- err
+				chPkZ <- nil
 				return
 			}
 			chPkZ <- &pk
-			close(chPkZ)
+			chPkZDone <- nil
 		}()
-		<-chBs1Done
+		err = <-chBs1Done
+		if err != nil {
+			return nil, err
+		}
 
 		pkB1 = nil
 	}
 	runtime.GC()
 
+	// compute krs2, load pkK
 	var pkK *ProvingKey
 	chPkK := make(chan *ProvingKey, 1)
+	chPkKDone := make(chan error, 1)
 	var krs2 curve.G1Jac
 	{
 		pkZ = <-chPkZ
 
 		chKrs2Done := make(chan error, 1)
-		go func() {
-			_, err := krs2.MultiExp(pkZ.G1.Z, h, ecc.MultiExpConfig{NbTasks: n / 2})
+		computeKRS2 := func() {
+			sizeH := int(pkE.Card - 1) // comes from the fact the deg(H)=(n-1)+(n-1)-n=n-2
+			_, err := krs2.MultiExp(pkZ.G1.Z, h[:sizeH], ecc.MultiExpConfig{NbTasks: n / 2})
 			chKrs2Done <- err
-		}()
+		}
+		go computeKRS2()
+
 		go func() {
 			name := fmt.Sprintf("%s.pk.K.save", session)
 			pkFile, err := os.Open(name)
 			if err != nil {
+				chPkKDone <- err
+				chPkK <- nil
 				return
 			}
 			pk := ProvingKey{}
 			_, err = pk.UnsafeReadKFrom(pkFile)
 			if err != nil {
+				chPkKDone <- err
+				chPkK <- nil
 				return
 			}
 			chPkK <- &pk
-			close(chPkK)
+			chPkKDone <- nil
 		}()
-		<-chKrs2Done
+		err := <-chKrs2Done
+		if err != nil {
+			return nil, err
+		}
 
 		pkZ = nil
 	}
 	runtime.GC()
 
+	// compute krs, load back pKB2 for next run
 	{
 		pkK = <-chPkK
 
 		chKrsDone := make(chan error, 1)
-		// computeKRS := func() {
-		go func() {
+		computeKRS := func() {
 			// we could NOT split the Krs multiExp in 2, and just append pk.G1.K and pk.G1.Z
 			// however, having similar lengths for our tasks helps with parallelism
 
@@ -605,23 +652,32 @@ func ProveRoll(r1cs *cs.R1CS, pkE, pkB2 *ProvingKey, witness fr.Vector, opt back
 
 			proof.Krs.FromJacobian(&krs)
 			chKrsDone <- nil
-		}()
+		}
+		go computeKRS()
 
-		chPkB2 := make(chan struct{}, 1)
+		chPkB2Done := make(chan error, 1)
 		go func() {
 			name := fmt.Sprintf("%s.pk.B2.save", session)
 			pkFile, err := os.Open(name)
 			if err != nil {
+				chPkB2Done <- err
 				return
 			}
 			_, err = pkB2.UnsafeReadB2From(pkFile)
 			if err != nil {
+				chPkB2Done <- err
 				return
 			}
-			close(chPkB2)
+			chPkB2Done <- nil
 		}()
-		<-chPkB2
-		<-chKrsDone
+		err := <-chKrsDone
+		if err != nil {
+			return nil, err
+		}
+		err = <-chPkB2Done
+		if err != nil {
+			return nil, err
+		}
 
 		pkK = nil
 	}
