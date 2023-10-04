@@ -750,6 +750,23 @@ func (cs *R1CS) SplitDumpBinary(session string, batchSize int) error {
 			}
 			cs.R1CSCore.System.IndexedInputs = nil
 		}
+		cs2 := &R1CS{}
+		cs2.R1CSCore.System = constraint.NewSystem(fr.Modulus())
+		cs2.R1CSCore.System.GnarkVersion = cs.R1CSCore.System.GnarkVersion
+		cs2.R1CSCore.System.ScalarField = cs.R1CSCore.System.ScalarField
+		cs2.R1CSCore.System.NbInternalVariables = cs.R1CSCore.System.NbInternalVariables
+		cs2.R1CSCore.System.Public = cs.R1CSCore.System.Public
+		cs2.R1CSCore.System.Secret = cs.R1CSCore.System.Secret
+		cs2.R1CSCore.System.Logs = cs.R1CSCore.System.Logs
+		cs2.R1CSCore.System.DebugInfo = cs.R1CSCore.System.DebugInfo
+		cs2.R1CSCore.System.SymbolTable = cs.R1CSCore.System.SymbolTable
+		cs2.R1CSCore.System.MDebug = cs.R1CSCore.System.MDebug
+		cs2.R1CSCore.System.NbHintFnWires = cs.R1CSCore.System.NbHintFnWires
+		cs2.R1CSCore.System.NbHintFnInputs = cs.R1CSCore.System.NbHintFnInputs
+		cs2.R1CSCore.System.MHints = cs.R1CSCore.System.MHints
+		cs2.R1CSCore.System.MHintsDependencies = cs.R1CSCore.System.MHintsDependencies
+		cs2.R1CSCore.System.CommitmentInfo = cs.R1CSCore.System.CommitmentInfo
+		cs2.R1CSCore.System.GKRMeta = cs.R1CSCore.System.GKRMeta
 
 		runtime.GC()
 		name = fmt.Sprintf("%s.r1cs.E1.save", session)
@@ -757,13 +774,7 @@ func (cs *R1CS) SplitDumpBinary(session string, batchSize int) error {
 		if err != nil {
 			return err
 		}
-		writer = bufio.NewWriter(csFile)
-		enc = gob.NewEncoder(writer)
-		err = enc.Encode(cs.R1CSCore.System)
-		if err != nil {
-			return err
-		}
-		err = writer.Flush()
+		_, err = cs2.WriteTo(csFile)
 		if err != nil {
 			return err
 		}
@@ -969,9 +980,7 @@ func (cs *R1CS) LoadFromSplitBinaryConcurrent(session string, N, batchSize, NCor
 					if err != nil {
 						panic(err)
 					}
-					reader := bufio.NewReader(csFile)
-					dec := gob.NewDecoder(reader)
-					err = dec.Decode(cs2)
+					_, err = cs2.ReadFrom(csFile)
 					if err != nil {
 						panic(err)
 					}
