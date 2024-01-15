@@ -2,6 +2,7 @@ package sha256
 
 import (
 	"fmt"
+
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/permutation/keccakf"
@@ -43,10 +44,10 @@ func (d *Digest) Reset() {
 	d.len = 0
 }
 
-func Sha256Api(api frontend.API, data ...frontend.Variable) frontend.Variable {
+func Sha256Api(api frontend.API, padding frontend.Variable, data ...frontend.Variable) frontend.Variable {
 	sha := New(api)
-	sha.Write(data[:])
-	return sha.Sum()
+	sha.Write(padding, data[:])
+	return sha.Sum(padding)
 }
 
 func New(api frontend.API) Digest {
@@ -60,49 +61,46 @@ func New(api frontend.API) Digest {
 }
 
 // p: byte array
-func (d *Digest) Write(p []frontend.Variable) (nn int, err error) {
+func (d *Digest) Write(padding frontend.Variable, p []frontend.Variable) (nn int, err error) {
 	var in []keccakf.Xuint8
 	for i := range p {
 		in = append(in, keccakf.NewUint8API(d.api).AsUint8(p[i]))
 	}
-	return d.write(in)
+	return d.write(in, padding)
 
 }
 
-func (d *Digest) write(p []keccakf.Xuint8) (nn int, err error) {
+func (d *Digest) write(p []keccakf.Xuint8, padding frontend.Variable) (nn int, err error) {
 	nn = len(p)
 	d.len += uint64(nn)
-
 	if d.nx > 0 {
 		n := copy(d.x[d.nx:], p)
 		d.nx += n
 		if d.nx == chunk {
-			blockGeneric(d, d.x[:]...)
+			blockGeneric(d, 0, d.x[:]...)
 			d.nx = 0
 		}
 		p = p[n:]
 	}
-
 	if len(p) >= chunk {
 		n := len(p) &^ (chunk - 1)
-		blockGeneric(d, p[:n]...)
+		blockGeneric(d, padding, p[:n]...)
 		p = p[n:]
 	}
 
 	if len(p) > 0 {
 		d.nx = copy(d.x[:], p)
 	}
-
 	return
 }
 
-func (d *Digest) Sum() frontend.Variable {
+func (d *Digest) Sum(padding frontend.Variable) frontend.Variable {
 	d0 := *d
-	hash := d0.checkSum()
+	hash := d0.checkSum(padding)
 	return hash
 }
 
-func (d *Digest) checkSum() frontend.Variable {
+func (d *Digest) checkSum(padding frontend.Variable) frontend.Variable {
 	l := d.len
 	var tmp [64]keccakf.Xuint8
 	tmp[0] = keccakf.ConstUint8(0x80)
@@ -110,24 +108,24 @@ func (d *Digest) checkSum() frontend.Variable {
 		tmp[i] = keccakf.ConstUint8(0x0)
 	}
 	if l%64 < 56 {
-		_, err := d.write(tmp[0 : 56-l%64])
+		_, err := d.write(tmp[0:56-l%64], 0)
 		if err != nil {
 			panic(fmt.Sprint("err during sha256 hash calculation", err))
 		}
 	} else {
-		_, err := d.write(tmp[0 : 64+56-l%64])
+		_, err := d.write(tmp[0:64+56-l%64], 0)
 		if err != nil {
 			panic(fmt.Sprint("err during sha256 hash calculation", err))
 		}
 	}
-	msgLen := l * 8
+	msgLen := d.api.Mul(d.api.Sub(l, padding), 8)
 
 	bits := d.api.ToBinary(msgLen, 64) // 64 bit = 8 byte
 	for i, j := 7, 0; i >= 0; i, j = i-1, j+1 {
 		start := i * 8
 		copy(tmp[j][:], bits[start : start+8][:])
 	}
-	_, err := d.write(tmp[0:8])
+	_, err := d.write(tmp[0:8], 0)
 	if err != nil {
 		panic(fmt.Sprint("err during sha256 hash calculation", err))
 	}
