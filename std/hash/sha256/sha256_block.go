@@ -31,14 +31,13 @@ var _K = [64]frontend.Variable{
 	frontend.Variable(0x19a4c116), frontend.Variable(0x1e376c08), frontend.Variable(0x2748774c), frontend.Variable(0x34b0bcb5), frontend.Variable(0x391c0cb3), frontend.Variable(0x4ed8aa4a), frontend.Variable(0x5b9cca4f), frontend.Variable(0x682e6ff3),
 	frontend.Variable(0x748f82ee), frontend.Variable(0x78a5636f), frontend.Variable(0x84c87814), frontend.Variable(0x8cc70208), frontend.Variable(0x90befffa), frontend.Variable(0xa4506ceb), frontend.Variable(0xbef9a3f7), frontend.Variable(0xc67178f2)}
 
-func blockGeneric(dig *Digest, data ...keccakf.Xuint8) {
+func blockGeneric(dig *Digest, padding frontend.Variable, data ...keccakf.Xuint8) {
 	sha := newSha256(dig.api)
 	uapi8 := sha.uapi8
 	uapi32 := sha.uapi32
 	gnark := sha.api
 
 	h0, h1, h2, h3, h4, h5, h6, h7 := dig.h[0], dig.h[1], dig.h[2], dig.h[3], dig.h[4], dig.h[5], dig.h[6], dig.h[7]
-
 	for len(data) >= chunk {
 		var w []keccakf.Xuint32
 		for i := 0; i < 16; i++ {
@@ -122,6 +121,8 @@ func blockGeneric(dig *Digest, data ...keccakf.Xuint8) {
 			a = sha.trimBitsToXuint32(gnark.Add(temp1, temp2), 35)
 		}
 
+		// Ignore padding (if it's all 0)
+		paddingFlag := gnark.IsZero(gnark.Sub(padding, len(data)))
 		/*
 		   Add the compressed chunk to the current hash value:
 		   h0 := h0 + a
@@ -133,15 +134,16 @@ func blockGeneric(dig *Digest, data ...keccakf.Xuint8) {
 		   h6 := h6 + g
 		   h7 := h7 + h
 		*/
-		h0 = sha.trimBitsToXuint32(gnark.Add(uapi32.FromUint32(h0), uapi32.FromUint32(a)), 33)
-		h1 = sha.trimBitsToXuint32(gnark.Add(uapi32.FromUint32(h1), uapi32.FromUint32(b)), 33)
-		h2 = sha.trimBitsToXuint32(gnark.Add(uapi32.FromUint32(h2), uapi32.FromUint32(c)), 33)
-		h3 = sha.trimBitsToXuint32(gnark.Add(uapi32.FromUint32(h3), uapi32.FromUint32(d)), 33)
-		h4 = sha.trimBitsToXuint32(gnark.Add(uapi32.FromUint32(h4), uapi32.FromUint32(e)), 33)
-		h5 = sha.trimBitsToXuint32(gnark.Add(uapi32.FromUint32(h5), uapi32.FromUint32(f)), 33)
-		h6 = sha.trimBitsToXuint32(gnark.Add(uapi32.FromUint32(h6), uapi32.FromUint32(g)), 33)
-		h7 = sha.trimBitsToXuint32(gnark.Add(uapi32.FromUint32(h7), uapi32.FromUint32(h)), 33)
+		h0 = sha.trimBitsToXuint32(gnark.Add(uapi32.FromUint32(h0), gnark.Select(paddingFlag, 0, uapi32.FromUint32(a))), 33)
+		h1 = sha.trimBitsToXuint32(gnark.Add(uapi32.FromUint32(h1), gnark.Select(paddingFlag, 0, uapi32.FromUint32(b))), 33)
+		h2 = sha.trimBitsToXuint32(gnark.Add(uapi32.FromUint32(h2), gnark.Select(paddingFlag, 0, uapi32.FromUint32(c))), 33)
+		h3 = sha.trimBitsToXuint32(gnark.Add(uapi32.FromUint32(h3), gnark.Select(paddingFlag, 0, uapi32.FromUint32(d))), 33)
+		h4 = sha.trimBitsToXuint32(gnark.Add(uapi32.FromUint32(h4), gnark.Select(paddingFlag, 0, uapi32.FromUint32(e))), 33)
+		h5 = sha.trimBitsToXuint32(gnark.Add(uapi32.FromUint32(h5), gnark.Select(paddingFlag, 0, uapi32.FromUint32(f))), 33)
+		h6 = sha.trimBitsToXuint32(gnark.Add(uapi32.FromUint32(h6), gnark.Select(paddingFlag, 0, uapi32.FromUint32(g))), 33)
+		h7 = sha.trimBitsToXuint32(gnark.Add(uapi32.FromUint32(h7), gnark.Select(paddingFlag, 0, uapi32.FromUint32(h))), 33)
 
+		padding = gnark.Select(paddingFlag, gnark.Sub(padding, 64), padding)
 		data = data[chunk:]
 	}
 

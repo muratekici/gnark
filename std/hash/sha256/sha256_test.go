@@ -3,13 +3,14 @@ package sha256
 import (
 	"crypto/sha256"
 	"fmt"
+	"testing"
+
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/test"
 	"github.com/ethereum/go-ethereum/common"
-	"testing"
 )
 
 type sha256Circuit struct {
@@ -18,7 +19,7 @@ type sha256Circuit struct {
 }
 
 func (circuit sha256Circuit) Define(api frontend.API) error {
-	result := Sha256Api(api, circuit.Data[:]...)
+	result := Sha256Api(api, 0, circuit.Data[:]...)
 	api.AssertIsEqual(result, circuit.ExpectedResult)
 	return nil
 }
